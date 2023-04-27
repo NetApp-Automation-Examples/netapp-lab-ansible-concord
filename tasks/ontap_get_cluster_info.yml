@@ -1,0 +1,13 @@
+- name: Get ONTAP cluster info as Cluster Admin (Password Authentication)
+  netapp.ontap.na_ontap_info:
+    gather_subset: "{{ gather_subset | default(omit) }}"
+    vserver: "{{ limit_to_svm | default(omit) }}"
+    hostname: "{{ ontap_hostname }}"
+    username: "{{ ontap_username }}"
+    password: "{{ ontap_password }}"
+    https: "{{ https }}"
+    validate_certs: "{{ validate_certs }}"
+  register: ontap_info_results
+- name: Set ontap_info Fact 
+  set_fact:
+    ontap_info: "{{ ontap_info_results.ontap_info }}"

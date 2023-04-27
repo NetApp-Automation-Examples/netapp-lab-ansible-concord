@@ -1,0 +1,7 @@
+---
+collections:
+  - name: netapp.ontap
+  - name: netapp.um_info
+  - name: ansible.posix
+  - name: awx.awx
+  - name: azure.azcollection

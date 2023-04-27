@@ -1,0 +1,6 @@
+[lab_ontap]
+cluster1 ontap_cluster_lif=192.168.0.101
+cluster2 ontap_cluster_lif=192.168.0.102
+
+[ontap_clusters:children]
+lab_ontap

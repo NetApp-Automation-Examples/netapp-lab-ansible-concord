@@ -1,0 +1,5 @@
+ontap_hostname: "{{ ontap_cluster_lif }}"
+ontap_username: admin
+ontap_password: "{{ lookup('env', 'ONTAP_PASSWORD') }}"
+https: true
+validate_certs: false

@@ -1,0 +1,34 @@
+---
+- name: Examples of different ways to tame na_ontap_info
+  hosts: "{{ ansible_limit | default('localhost') }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  vars_files: 
+    - vars/vars.yml
+  tasks:
+  - name: Let's grab all the info to start
+    include_tasks: tasks/ontap_get_cluster_info.yml
+  - name: Grab the first (non-root) aggr using Jinja2
+    debug: 
+      msg: "{{ (ontap_info.aggregate_info | dict2items | map(attribute='value') | selectattr('aggr_raid_attributes.is_root_aggregate', 'equalto', 'false') | list | first).aggregate_name }}"
+  # - name: Grab the least utilized (non-root) aggr using Jinja2
+  #   debug: 
+  #     msg: "{{ (ontap_info.aggregate_info | dict2items | map(attribute='value') | selectattr('aggr_raid_attributes.is_root_aggregate', 'equalto', 'false') | map(attribute='aggr_space_attributes.size_available') | list | max).aggregate_name }}"
+  - name: Say we neeed to find the least utilized aggregate from the cluster? Custom filters to the rescue. See /filter_plugins/ontap_filters.py  
+    set_fact:
+      least_utilized_aggr: "{{ ontap_info.aggregate_info | least_utilized_aggr }}" 
+      least_utilized_space: "{{ ontap_info.aggregate_info | dict2items | map(attribute='value') | selectattr('aggr_raid_attributes.is_root_aggregate', 'equalto', 'false') | map(attribute='aggr_space_attributes.size_available') | max }}"
+  - name: Display least_utilized_aggr fact from our custom filter 
+    debug:
+      msg: The least utilized aggregate is '{{ least_utilized_aggr }}'
+  - name: Let's get a list of all the (data) SVMs in the cluster
+    debug: 
+      msg: ontap_info.vserver_info | svm_namess
+  - name: Show Admin and Node SVMs by passing a list of types to filter
+    debug: 
+      var: ontap_info.vserver_info | svm_names(['admin','node'])
+  - name: Get full port name from list of short names using 'full_port_names' filter
+    debug: 
+      msg: "{{ ports_example }} becomes {{ ontap_info.net_port_info | full_port_names(ports_example) }}" 
