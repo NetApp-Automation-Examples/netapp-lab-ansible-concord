@@ -1,9 +1,10 @@
 #!/bin/sh
 cd /root
 git clone https://github.com/johnwarlick/netapp-lab-ansible-concord.git
+cd netapp-lab-ansible-concord
 # This Centos8 is busted so we gotta fix dnf first
-yes | \cp -rf netapp-ontap-ansible-awx-demo/_bootstrap/CentOS-Base.repo /etc/yum.repos.d/
-yes | \cp -rf netapp-ontap-ansible-awx-demo/_bootstrap/CentOS-AppStream.repo /etc/yum.repos.d/
+yes | \cp -rf _bootstrap/CentOS-Base.repo /etc/yum.repos.d/
+yes | \cp -rf _bootstrap/CentOS-AppStream.repo /etc/yum.repos.d/
 #rpm --rebuilddb
 # 3.9 gives an error TODO - fix error and update to 3.9
 dnf install python3.8 -y
