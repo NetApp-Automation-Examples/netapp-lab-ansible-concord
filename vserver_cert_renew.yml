@@ -6,12 +6,19 @@
   collections:
     - netapp.ontap
   tasks:
-  - name: Gather vservers
+  - name: Gather vserver self-signed certificates that are expired
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: ['security/certificates']
+      parameters: 
+        type: "server"
+      fields: ['uuid', 'name']
+      # gather_subset: ['svm/svms']
+      # fields: ['*']
+  - name: Check info
     debug: 
-      msg: "Gather vservers"
-  - name: Check for expired certs
+      var: ontap_rest_info
+  - name: Renew them
     debug: 
       msg: "Check for expired certs"
-  - name: Renew expired certs
-    debug: 
-      msg: "Renew expired certs"
+  

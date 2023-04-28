@@ -1,0 +1,15 @@
+- name: Get ONTAP cluster info via REST API as Cluster Admin (Password Authentication)
+  netapp.ontap.na_ontap_rest_info:
+    gather_subset: "{{ gather_subset | default(omit) }}"
+    parameters: "{{ parameters | default(omit) }}"
+    fields: "{{ fields | default(omit) }}"
+    hostname: "{{ ontap_hostname }}"
+    username: "{{ ontap_username }}"
+    password: "{{ ontap_password }}"
+    https: "{{ https }}"
+    validate_certs: "{{ validate_certs }}"
+  register: ontap_rest_info_results
+- name: Set ontap_rest_info Fact 
+  set_fact:
+    ontap_rest_info: "{{ ontap_rest_info_results.ontap_info }}"
+    

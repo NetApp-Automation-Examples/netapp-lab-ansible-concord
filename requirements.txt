@@ -1,2 +1,3 @@
 netapp-lib
+requests
 ansible
