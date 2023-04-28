@@ -1,0 +1,17 @@
+---
+- name: Upgrading vserver self-signed certificates 
+  hosts: "{{ ansible_limit | default('localhost') }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  tasks:
+  - name: Gather vservers
+    debug: 
+      msg: "Gather vservers"
+  - name: Check for expired certs
+    debug: 
+      msg: "Check for expired certs"
+  - name: Renew expired certs
+    debug: 
+      msg: "Renew expired certs"
