@@ -5,8 +5,6 @@
   connection: 'local'
   collections:
     - netapp.ontap
-  vars_files: 
-    - vars/vars.yml
   tasks:
   - name: Let's grab all the info to start
     include_tasks: tasks/ontap_get_cluster_info.yml

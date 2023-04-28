@@ -1,5 +1,2 @@
 netapp-lib
-azure-storage-blob
-awxkit
-ansible[azure]
-jmespath
+ansible
