@@ -1,5 +1,6 @@
 ---
 - name: Renewing expired vserver self-signed certificates 
+  # https://kb.netapp.com/onprem/ontap/dm/Encryption/How_to_renew_a_Self-Signed_SSL_certificate_in_ONTAP_9_10_0_and_earlier
   hosts: "{{ ansible_limit | default('localhost') }}"
   gather_facts: yes
   connection: 'local'
@@ -15,7 +16,6 @@
       password: "{{ ontap_password }}"
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
-  # https://kb.netapp.com/onprem/ontap/dm/Encryption/How_to_renew_a_Self-Signed_SSL_certificate_in_ONTAP_9_10_0_and_earlier
   tasks:
   - name: Gather vserver self-signed certificates that are expired
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
@@ -41,52 +41,48 @@
       svm: "{{ item.svm.name }}"
       expiry_time: "{{ expiry_time }}"
     with_items: "{{ expired_certs }}"
-    register: new_certs
-
-  - name: Set new_certs Fact 
-    set_fact:
-      new_certs: "{{ new_certs.results.invocation.module_args }}"
-
-  - name: Check new_certs
-    ansible.builtin.debug: 
-      var: new_certs
 
   - name: Get Serial Number from newly generated self-signed certificates
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: ['security/certificates']
+      parameters: 
+        type: server
+        scope: svm
+        name: "*{{ new_cert_name_append }}"
+      fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
+       
+  - name: Set new_certs fact
+    set_fact:
+      new_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+
+    # As of May 2023, REST API does not have security ssl modify command
+  - name: Activate new self-signed certificates
     netapp.ontap.na_ontap_command: 
       <<: *login
-      command: ['security', 'certificates', 'show', '-name', '{{ item.name }}', '-type', 'server', '-svm', '{{ item.svm }}']
+      command: ['security', 'ssl', 'modify', '-server-enabled', 'true', '-vserver', '{{ item.svm.name }}', '-ca', '{{ item.ca }}', '-serial', '{{ item.serial_number }}']
       return_dict: true
     with_items: "{{ new_certs }}"
-    register: new_certs_serials
 
-  - name: Check new_certs_serials
-    ansible.builtin.debug: 
-      var: new_certs_serials
-
-  #security ssl modify -server-enabled true -vserver <svm name> -ca <auth> -serial <serial> 
-  # - name: Activate new self-signed certificates
-  #   netapp.ontap.na_ontap_command: 
-  #     <<: *login
-  #     command: ['security', 'ssl', 'modify', '-server-enabled', 'true', '-vserver', '{{ item.svm }}', '-ca', '{{ item.common_name }}', '-serial', '{{ item.serial_number }}']
-  #     return_dict: true
-  #   with_items: "{{ new_certs.results.invocation.module_args }}"
-  #   when: item.changed == true
-
-
-  #security ssl show -common-name <common name>  
   - name: Confirm it is activated
     netapp.ontap.na_ontap_command: 
       <<: *login
-      command: ['security', 'ssl', 'show', '-common-name', '{{ item.common_name }}']
+      command: ['security', 'ssl', 'show', '-common-name', '{{ item.common_name }}', '-fields', 'ca, common-name, server-enabled,serial']
       return_dict: true
+    with_items: "{{ new_certs }}"
+    register: confirm_new_certs
+  
+  - name: Display confirmation command results
+    ansible.builtin.debug: 
+      msg: "{{ item.msg.stdout_lines }}"
+    with_items: "{{ confirm_new_certs.results }}"
 
-    #security ssl show -common-name <common name>  
-  # - name: Delete expired certificates
-  #   na_ontap_security_certificates: 
-  #     <<: *login
-  #     state: absent
-  #     name: "{{ item.name }}"
-  #     common_name: "{{ item.common_name }}"
-  #     type: server
-  #     svm: "{{ item.svm.name }}"
-  #   with_items: "{{ ontap_rest_info['security/certificates']['records'] }}"
+  - name: Delete expired certificates
+    na_ontap_security_certificates: 
+      <<: *login
+      state: absent
+      name: "{{ item.name }}"
+      common_name: "{{ item.common_name }}"
+      type: server
+      svm: "{{ item.svm.name }}"
+    with_items: "{{ expired_certs }}"
