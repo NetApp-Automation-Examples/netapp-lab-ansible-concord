@@ -30,6 +30,14 @@
   - name: Set expired_certs Fact 
     set_fact:
       expired_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+    when: ontap_rest_info['security/certificates']['num_records'] > 0
+
+  - block: 
+    - name: End playbook for {{ inventory_hostname }} if no expired vserver certs found
+      ansible.builtin.debug: 
+        msg: "No expired vserver certificates found on {{ inventory_hostname }}"
+    - meta: end_host
+    when: expired_certs is undefined
 
   - name: Create new self-signed certificates for each expired vserver cert
     netapp.ontap.na_ontap_security_certificates: 
