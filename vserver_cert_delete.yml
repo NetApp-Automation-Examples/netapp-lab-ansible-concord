@@ -1,0 +1,45 @@
+---
+- name: Delete all vserver certificates 
+  hosts: "{{ ansible_limit | default('localhost') }}"
+  gather_facts: yes
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  vars: 
+    login: &login
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  tasks:
+  - name: Gather all vserver certificates 
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: ['security/certificates']
+      parameters: 
+        type: server
+        scope: svm
+      fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number','type','expiry_time']
+
+  - name: Set vserver_certs Fact 
+    set_fact:
+      vserver_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+    when: ontap_rest_info['security/certificates']['num_records'] > 0
+
+  - block: 
+    - name: End playbook for {{ inventory_hostname }} if no vserver certs found
+      ansible.builtin.debug: 
+        msg: "No vserver certificates found on {{ inventory_hostname }}"
+    - meta: end_host
+    when: vserver_certs is undefined
+
+  - name: Delete vserver certificates
+    na_ontap_security_certificates: 
+      <<: *login
+      state: absent
+      name: "{{ item.name }}"
+      common_name: "{{ item.common_name }}"
+      type: server
+      svm: "{{ item.svm.name }}"
+    with_items: "{{ vserver_certs }}"
