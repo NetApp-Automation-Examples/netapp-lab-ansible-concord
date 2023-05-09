@@ -1,5 +1,5 @@
 ---
-- name: Renewing cluster/vserver self-signed SSL certificates 
+- name: Renewing {{ cert_scope }} self-signed SSL certificates 
   # https://kb.netapp.com/onprem/ontap/dm/Encryption/How_to_renew_a_Self-Signed_SSL_certificate_in_ONTAP_9_10_0_and_earlier
   hosts: "{{ ansible_limit | default('localhost') }}"
   gather_facts: yes
@@ -9,7 +9,8 @@
   vars: 
     current_date_time: "{{ ansible_date_time.iso8601 }}"
     new_cert_name_append: "_{{ ansible_date_time.date }}_renew"
-    cert_scope: svm,cluster
+    # remove ",svm" to just do cluster certs, and vice versa 
+    cert_scope: cluster,svm
     expiry_time:  P365DT # 1 year
     # Set to False to ignore expiry_time_query and renew all certs
     renew_only_expired: True
