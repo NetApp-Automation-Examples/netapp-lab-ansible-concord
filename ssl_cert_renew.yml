@@ -9,8 +9,8 @@
   vars: 
     current_date_time: "{{ ansible_date_time.iso8601 }}"
     new_cert_name_append: "_{{ ansible_date_time.date }}_renew"
-    # remove ",svm" to just do cluster certs, and vice versa 
-    cert_scope: cluster,svm
+    # remove ",cluster" to just do SVM certs, and vice versa 
+    cert_scope: svm,cluster
     expiry_time:  P365DT # 1 year
     # Set to False to ignore expiry_time_query and renew all certs
     renew_only_expired: True
@@ -51,8 +51,12 @@
       name: "{{ item.name }}{{ new_cert_name_append }}"
       common_name: "{{ item.common_name }}{{ new_cert_name_append }}"
       type: server
+<<<<<<< Updated upstream
       # Cluster level cert if no svm in dict
       svm: "{{ item.svm.name if item.svm is defined else omit }}"
+=======
+      svm: "{{ item.svm.name if item.svm.name else omit }}"
+>>>>>>> Stashed changes
       expiry_time: "{{ expiry_time }}"
     with_items: "{{ certs_to_renew }}"
 
