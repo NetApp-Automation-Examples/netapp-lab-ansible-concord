@@ -1,5 +1,5 @@
 ---
-- name: Renewing expired vserver self-signed certificates 
+- name: Renewing cluster/vserver self-signed SSL certificates 
   # https://kb.netapp.com/onprem/ontap/dm/Encryption/How_to_renew_a_Self-Signed_SSL_certificate_in_ONTAP_9_10_0_and_earlier
   hosts: "{{ ansible_limit | default('localhost') }}"
   gather_facts: yes
@@ -8,8 +8,12 @@
     - netapp.ontap
   vars: 
     current_date_time: "{{ ansible_date_time.iso8601 }}"
-    new_cert_name_append: "_{{ ansible_date_time.date }}"
+    new_cert_name_append: "_{{ ansible_date_time.date }}_renew"
+    cert_scope: svm,cluster
     expiry_time:  P365DT # 1 year
+    # Set to False to ignore expiry_time_query and just grab all certs
+    renew_only_expired: True
+    expiry_time_query: "<{{ current_date_time }}"
     login: &login
       hostname: "{{ ontap_hostname }}"
       username: "{{ ontap_username }}"
@@ -17,29 +21,29 @@
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
   tasks:
-  - name: Gather vserver self-signed certificates that are expired
+  - name: Gather self-signed certificates to renew on {{ inventory_hostname }} ({{ cert_scope }}, {{ 'expired certs' if renew_only_expired else 'all certs'}})
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
     vars: 
       gather_subset: ['security/certificates']
       parameters: 
         type: server
-        scope: svm
-        expiry_time: "<{{ current_date_time }}"
+        scope: "{{ cert_scope }}"
+        expiry_time: "{{ expiry_time_query if renew_only_expired else ''}}"
       fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number','type','expiry_time']
 
-  - name: Set expired_certs Fact 
+  - name: Set certs_to_renew Fact based on above query
     set_fact:
-      expired_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+      certs_to_renew: "{{ ontap_rest_info['security/certificates']['records'] }}"
     when: ontap_rest_info['security/certificates']['num_records'] > 0
 
   - block: 
-    - name: End playbook for {{ inventory_hostname }} if no expired vserver certs found
+    - name: End playbook for {{ inventory_hostname }} if no matching certs found
       ansible.builtin.debug: 
-        msg: "No expired vserver certificates found on {{ inventory_hostname }}"
+        msg: "No certificates matching query found on {{ inventory_hostname }}"
     - meta: end_host
-    when: expired_certs is undefined
+    when: certs_to_renew is undefined
 
-  - name: Create new self-signed certificates for each expired vserver cert
+  - name: Create new self-signed certificates for each cert to be renewed
     netapp.ontap.na_ontap_security_certificates: 
       <<: *login
       state: present
@@ -48,7 +52,7 @@
       type: server
       svm: "{{ item.svm.name }}"
       expiry_time: "{{ expiry_time }}"
-    with_items: "{{ expired_certs }}"
+    with_items: "{{ certs_to_renew }}"
 
   - name: Get Serial Number from newly generated self-signed certificates
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
@@ -56,7 +60,7 @@
       gather_subset: ['security/certificates']
       parameters: 
         type: server
-        scope: svm
+        scope: "{{ cert_scope }}"
         name: "*{{ new_cert_name_append }}"
       fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
        
@@ -93,4 +97,4 @@
       common_name: "{{ item.common_name }}"
       type: server
       svm: "{{ item.svm.name }}"
-    with_items: "{{ expired_certs }}"
+    with_items: "{{ certs_to_renew }}"
