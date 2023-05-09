@@ -50,7 +50,8 @@
       name: "{{ item.name }}{{ new_cert_name_append }}"
       common_name: "{{ item.common_name }}{{ new_cert_name_append }}"
       type: server
-      svm: "{{ item.svm.name }}"
+      # Cluster level cert if no svm in dict
+      svm: "{{ item.svm.name if item.svm is defined else omit }}"
       expiry_time: "{{ expiry_time }}"
     with_items: "{{ certs_to_renew }}"
 
@@ -72,7 +73,7 @@
   - name: Activate new self-signed certificates
     netapp.ontap.na_ontap_command: 
       <<: *login
-      command: ['security', 'ssl', 'modify', '-server-enabled', 'true', '-vserver', '{{ item.svm.name }}', '-ca', '{{ item.ca }}', '-serial', '{{ item.serial_number }}']
+      command: ['security', 'ssl', 'modify', '-server-enabled', 'true', '-vserver', '{{ item.svm.name if item.svm is defined }}', '-ca', '{{ item.ca }}', '-serial', '{{ item.serial_number }}']
       return_dict: true
     with_items: "{{ new_certs }}"
 
@@ -89,12 +90,12 @@
       msg: "{{ item.msg.stdout_lines }}"
     with_items: "{{ confirm_new_certs.results }}"
 
-  - name: Delete expired certificates
+  - name: Delete old certificates
     na_ontap_security_certificates: 
       <<: *login
       state: absent
       name: "{{ item.name }}"
       common_name: "{{ item.common_name }}"
       type: server
-      svm: "{{ item.svm.name }}"
+      svm: "{{ item.svm.name if item.svm is defined else omit }}"
     with_items: "{{ certs_to_renew }}"
