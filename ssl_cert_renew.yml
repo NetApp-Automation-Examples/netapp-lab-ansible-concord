@@ -11,7 +11,7 @@
     new_cert_name_append: "_{{ ansible_date_time.date }}_renew"
     cert_scope: svm,cluster
     expiry_time:  P365DT # 1 year
-    # Set to False to ignore expiry_time_query and just grab all certs
+    # Set to False to ignore expiry_time_query and renew all certs
     renew_only_expired: True
     expiry_time_query: "<{{ current_date_time }}"
     login: &login
@@ -28,7 +28,7 @@
       parameters: 
         type: server
         scope: "{{ cert_scope }}"
-        expiry_time: "{{ expiry_time_query if renew_only_expired else ''}}"
+        expiry_time: "{{ expiry_time_query if renew_only_expired else '*'}}"
       fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number','type','expiry_time']
 
   - name: Set certs_to_renew Fact based on above query
