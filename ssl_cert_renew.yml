@@ -51,12 +51,7 @@
       name: "{{ item.name }}{{ new_cert_name_append }}"
       common_name: "{{ item.common_name }}{{ new_cert_name_append }}"
       type: server
-<<<<<<< Updated upstream
-      # Cluster level cert if no svm in dict
-      svm: "{{ item.svm.name if item.svm is defined else omit }}"
-=======
       svm: "{{ item.svm.name if item.svm.name else omit }}"
->>>>>>> Stashed changes
       expiry_time: "{{ expiry_time }}"
     with_items: "{{ certs_to_renew }}"
 
