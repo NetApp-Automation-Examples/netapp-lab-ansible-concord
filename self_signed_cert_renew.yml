@@ -7,16 +7,15 @@
   collections:
     - netapp.ontap
   vars: 
-    # To be populated later with serials of certs from security ssl show -server-enabled true
-    active_ssl_certs: [] 
     current_date_time: "{{ ansible_date_time.iso8601 }}"
-    cert_name_append: "_{{ ansible_date_time.date }}_"
+    cert_name_append: "_{{ ansible_date_time.iso8601_basic_short }}_"
     # remove ",cluster" to just do SVM certs, and vice versa 
     cert_scope: svm,cluster
+    expired_buffer: 30 # days
     expiry_time:  P365DT # 1 year
-    # Set to False to ignore expiry_time_query and renew all certs
-    renew_only_expired: false
-    expiry_time_query: "{{ '<(current_date_time)' if (renew_only_expired) else '*'}}"
+    # Set to False to ignore expired/expiring dates and just renew all certs
+    renew_only_expiring: false
+    expiry_time_query: "{{ '<'+current_date_time if renew_only_expiring else '*'}}"
     login: &login
       hostname: "{{ ontap_hostname }}"
       username: "{{ ontap_username }}"
@@ -32,6 +31,8 @@
         type: server
         scope: "{{ cert_scope }}"
         expiry_time: "{{ expiry_time_query }}"
+        # Safety check - self-signed certs will not have any intermediate certs
+        intermediate_certificates: ""        
       fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number','type','expiry_time']
 
   - name: Set certs_to_renew Fact based on above query
@@ -71,8 +72,8 @@
         type: server
         scope: "{{ cert_scope }}"
         name: "*{{ cert_name_append }}"
-        # Self-signed will never have intermediate certs
-        intermediate_certificates: ""
+        # Safety check - self-signed certs will not have any intermediate certs
+        intermediate_certificates: ""        
       fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
        
   - name: Set new_certs fact
@@ -90,6 +91,8 @@
       command: ['security', 'ssl', 'modify', '-server-enabled', 'true', '-vserver', '{{ item.svm.name if item.svm is defined else item.common_name }}', '-ca', '{{ item.ca }}', '-serial', '{{ item.serial_number }}']
       return_dict: true
     loop: "{{ new_certs }}"
+    loop_control: 
+      label: ""
     register: activate_new_certs
 
   - name: Display activation command results
@@ -109,10 +112,6 @@
       label: "{{ item.common_name }}"
     register: confirm_new_certs
   
-  - name: Check confirm_new_certs
-    ansible.builtin.debug: 
-      msg: "{{ confirm_new_certs }}"
-
   - name: Display confirmation command results
     ansible.builtin.debug: 
       msg: "return from command: \n\n {{ item.msg.stdout_lines | join('\n') }}"
@@ -128,17 +127,24 @@
     ansible.builtin.debug:
       msg: "{{ active_ssl_certs }}"
 
-  - name: Delete old and now inactive certificates
-    ansible.builtin.debug:
-      msg: "Would delete {{ item.name }} - {{ item.serial_number }}"
-    # na_ontap_security_certificates: 
-    #   <<: *login
-    #   state: absent
-    #   name: "{{ item.name }}"
-    #   common_name: "{{ item.common_name }}"
-    #   type: server
-    #   svm: "{{ item.svm.name if item.svm is defined else omit }}"
+  - name: Safety check - if any of our certs_to_renew serials are still active, throw an error
+    ansible.builtin.fail:
+      msg: "{{ item.common_name }} - {{ item.serial_number }} is still listed as an active ssl cert"
     loop: "{{ certs_to_renew }}"
     loop_control: 
       label: "{{ item.name }} - {{ item.serial_number }}"
-    when: item.serial_number not in active_ssl_certs
+    when: item.serial_number in active_ssl_certs  
+  
+  - name: Delete the old, inactive certificates
+    # ansible.builtin.debug:
+    #   msg: "Would delete {{ item.name }} - {{ item.serial_number }}"
+    na_ontap_security_certificates: 
+      <<: *login
+      state: absent
+      name: "{{ item.name }}"
+      common_name: "{{ item.common_name }}"
+      type: server
+      svm: "{{ item.svm.name if item.svm is defined else omit }}"
+    loop: "{{ certs_to_renew }}"
+    loop_control: 
+      label: "{{ item.name }} - {{ item.serial_number }}"
