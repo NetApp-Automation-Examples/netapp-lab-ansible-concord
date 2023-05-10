@@ -7,6 +7,8 @@
   collections:
     - netapp.ontap
   vars: 
+    # To be populated later with serials of certs from security ssl show -server-enabled true
+    active_ssl_certs: [] 
     current_date_time: "{{ ansible_date_time.iso8601 }}"
     cert_name_append: "_{{ ansible_date_time.date }}_"
     # remove ",cluster" to just do SVM certs, and vice versa 
@@ -69,6 +71,8 @@
         type: server
         scope: "{{ cert_scope }}"
         name: "*{{ cert_name_append }}"
+        # Self-signed will never have intermediate certs
+        intermediate_certificates: ""
       fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
        
   - name: Set new_certs fact
@@ -79,7 +83,7 @@
     ansible.builtin.debug:
       msg: "{{ new_certs }}"
 
-  #   # As of May 2023, REST API does not have security ssl modify command
+    # As of May 2023, REST API does not have security ssl modify command
   - name: Activate new self-signed certificates
     netapp.ontap.na_ontap_command: 
       <<: *login
@@ -98,7 +102,7 @@
   - name: Confirm new certs are all activated
     netapp.ontap.na_ontap_command: 
       <<: *login
-      command: ['security', 'ssl', 'show', '-server-enabled','true','-common-name', '{{ item.common_name }}', '-fields', 'ca, serial, common-name, server-enabled']
+      command: ['security', 'ssl', 'show', '-server-enabled','true','-ca', '{{ item.ca }}', '-common-name','{{ item.common_name }}', '-fields', 'ca, serial, common-name, server-enabled']
       return_dict: true
     loop: "{{ new_certs }}"
     loop_control: 
@@ -116,18 +120,24 @@
     loop_control: 
       label: "{{ item.msg.invoked_command }}" 
   
-  - name: Set active_ssl_certs fact
+  - name: Set active_ssl_certs list based on confirm_new_certs
     set_fact:
-      active_ssl_certs: "{{ confirm_new_certs.results | map(attribute='msg') | map(attribute='stdout_lines') | join(\n) }}"
+      active_ssl_certs: "{{ confirm_new_certs.results | map(attribute='msg') | map(attribute='stdout_lines') | list | flatten | join('\n')}}"
+
+  - name: Log of active_ssl_certs
+    ansible.builtin.debug:
+      msg: "{{ active_ssl_certs }}"
 
   - name: Delete old and now inactive certificates
-    na_ontap_security_certificates: 
-      <<: *login
-      state: absent
-      name: "{{ item.name }}"
-      common_name: "{{ item.common_name }}"
-      type: server
-      svm: "{{ item.svm.name if item.svm is defined else omit }}"
+    ansible.builtin.debug:
+      msg: "Would delete {{ item.name }} - {{ item.serial_number }}"
+    # na_ontap_security_certificates: 
+    #   <<: *login
+    #   state: absent
+    #   name: "{{ item.name }}"
+    #   common_name: "{{ item.common_name }}"
+    #   type: server
+    #   svm: "{{ item.svm.name if item.svm is defined else omit }}"
     loop: "{{ certs_to_renew }}"
     loop_control: 
       label: "{{ item.name }} - {{ item.serial_number }}"
