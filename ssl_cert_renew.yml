@@ -8,12 +8,12 @@
     - netapp.ontap
   vars: 
     current_date_time: "{{ ansible_date_time.iso8601 }}"
-    new_cert_name_append: "_{{ ansible_date_time.date }}_renew"
+    tmp_cert_name_append: "__tmp__"
     # remove ",cluster" to just do SVM certs, and vice versa 
-    cert_scope: svm,cluster
+    cert_scope: cluster
     expiry_time:  P365DT # 1 year
     # Set to False to ignore expiry_time_query and renew all certs
-    renew_only_expired: true
+    renew_only_expired: false
     expiry_time_query: "<{{ current_date_time }}"
     login: &login
       hostname: "{{ ontap_hostname }}"
@@ -44,16 +44,22 @@
     - meta: end_host
     when: certs_to_renew is undefined
 
-  - name: Create new self-signed certificates for each cert to be renewed
+  - name: Log of certs_to_renew 
+    ansible.builtin.debug:
+      msg: "{{ certs_to_renew }}"
+
+  - name: Create new self-signed certificates with certs_to_renew
     netapp.ontap.na_ontap_security_certificates: 
       <<: *login
       state: present
-      name: "{{ item.name }}{{ new_cert_name_append }}"
-      common_name: "{{ item.common_name }}{{ new_cert_name_append }}"
+      name: "{{ item.common_name }}{{ tmp_cert_name_append }}"
+      common_name: "{{ item.common_name }}"
       type: server
-      svm: "{{ item.svm.name if item.svm.name else omit }}"
+      svm: "{{ item.svm.name if item.svm is defined else omit }}"
       expiry_time: "{{ expiry_time }}"
-    with_items: "{{ certs_to_renew }}"
+    loop: "{{ certs_to_renew }}"
+    loop_control: 
+      label: "{{ item.name }}"
 
   - name: Get Serial Number from newly generated self-signed certificates
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
@@ -62,40 +68,60 @@
       parameters: 
         type: server
         scope: "{{ cert_scope }}"
-        name: "*{{ new_cert_name_append }}"
+        name: "*{{ tmp_cert_name_append }}"
       fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
        
   - name: Set new_certs fact
     set_fact:
       new_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
 
-    # As of May 2023, REST API does not have security ssl modify command
+  - name: Log of new_certs
+    ansible.builtin.debug:
+      msg: "{{ new_certs }}"
+
+  #   # As of May 2023, REST API does not have security ssl modify command
   - name: Activate new self-signed certificates
     netapp.ontap.na_ontap_command: 
       <<: *login
-      command: ['security', 'ssl', 'modify', '-server-enabled', 'true', '-vserver', '{{ item.svm.name if item.svm is defined }}', '-ca', '{{ item.ca }}', '-serial', '{{ item.serial_number }}']
+      command: ['security', 'ssl', 'modify', '-server-enabled', 'true', '-vserver', '{{ item.svm.name if item.svm is defined else item.common_name }}', '-ca', '{{ item.ca }}', '-serial', '{{ item.serial_number }}']
       return_dict: true
-    with_items: "{{ new_certs }}"
+    loop: "{{ new_certs }}"
+    register: activate_new_certs
 
-  - name: Confirm it is activated
+  - name: Display activation command results
+    ansible.builtin.debug: 
+      msg: "{{ item.msg.invoked_command }} \n return from command: {{ item.msg.stdout_lines }}"
+    loop: "{{ activate_new_certs.results }}"
+    loop_control: 
+      label: ""
+
+  - name: Confirm new certs are all activated
     netapp.ontap.na_ontap_command: 
       <<: *login
-      command: ['security', 'ssl', 'show', '-common-name', '{{ item.common_name }}', '-fields', 'ca, common-name, server-enabled,serial']
+      command: ['security', 'ssl', 'show', '-server-enabled','true','-common-name', '{{ item.common_name }}', '-fields', 'ca, serial, common-name, server-enabled']
       return_dict: true
-    with_items: "{{ new_certs }}"
+    loop: "{{ new_certs }}"
+    loop_control: 
+      label: "{{ item.common_name }}"
     register: confirm_new_certs
   
   - name: Display confirmation command results
     ansible.builtin.debug: 
-      msg: "{{ item.msg.stdout_lines }}"
-    with_items: "{{ confirm_new_certs.results }}"
+      msg: "{{ item.msg.invoked_command }} \n return from command: \n\n {{ item.msg.stdout_lines | join('\n') }}"
+    loop: "{{ confirm_new_certs.results }}"
+    loop_control: 
+      label: ""
+  
+  # TODO: Only delete the old cert if the new cert is confirmed in place
+  #        because otherwise for cluster-level certs, this will break the GUI/REST API
 
-  - name: Delete old certificates
-    na_ontap_security_certificates: 
-      <<: *login
-      state: absent
-      name: "{{ item.name }}"
-      common_name: "{{ item.common_name }}"
-      type: server
-      svm: "{{ item.svm.name if item.svm is defined else omit }}"
-    with_items: "{{ certs_to_renew }}"
+
+  # - name: Delete old certificates if the new cert is confirmed in place
+  #   na_ontap_security_certificates: 
+  #     <<: *login
+  #     state: absent
+  #     name: "{{ item.name }}"
+  #     common_name: "{{ item.common_name }}"
+  #     type: server
+  #     svm: "{{ item.svm.name if item.svm is defined else omit }}"
+  #   loop: "{{ certs_to_renew }}"
