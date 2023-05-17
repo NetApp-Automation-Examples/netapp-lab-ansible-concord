@@ -11,7 +11,7 @@
     cert_name_append: "_{{ ansible_date_time.iso8601_basic_short }}_"
     # remove ",cluster" to just do SVM certs, and vice versa 
     cert_scope: svm,cluster
-    expired_buffer: 30 # days
+    #expired_buffer: 30 # days
     expiry_time:  P365DT # 1 year
     # Set to False to ignore expired/expiring dates and just renew all certs
     renew_only_expiring: false
@@ -135,7 +135,7 @@
       label: "{{ item.name }} - {{ item.serial_number }}"
     when: item.serial_number in active_ssl_certs  
   
-  - name: Delete the old, inactive certificates
+  - name: Delete the old, inactive certificates from initial certs_to_renew query
     # ansible.builtin.debug:
     #   msg: "Would delete {{ item.name }} - {{ item.serial_number }}"
     na_ontap_security_certificates: 
