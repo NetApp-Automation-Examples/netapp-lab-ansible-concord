@@ -86,54 +86,46 @@
 
     # As of May 2023, REST API does not have security ssl modify command
   - name: Activate new self-signed certificates
-    netapp.ontap.na_ontap_command: 
+    netapp.ontap.na_ontap_rest_cli: 
       <<: *login
-      command: ['security', 'ssl', 'modify', '-server-enabled', 'true', '-vserver', '{{ item.svm.name if item.svm is defined else item.common_name }}', '-ca', '{{ item.ca }}', '-serial', '{{ item.serial_number }}']
-      return_dict: true
-    loop: "{{ new_certs }}"
-    loop_control: 
-      label: ""
-    register: activate_new_certs
-
-  - name: Display activation command results
-    ansible.builtin.debug: 
-      msg: "{{ item.msg.invoked_command }} \n return from command: {{ item.msg.stdout_lines }}"
-    loop: "{{ activate_new_certs.results }}"
-    loop_control: 
-      label: ""
-
-  - name: Confirm new certs are all activated
-    netapp.ontap.na_ontap_command: 
-      <<: *login
-      command: ['security', 'ssl', 'show', '-server-enabled','true','-ca', '{{ item.ca }}', '-common-name','{{ item.common_name }}', '-fields', 'ca, serial, common-name, server-enabled']
-      return_dict: true
+      command: "security/ssl"
+      params: 
+        server-enabled: "true"
+        vserver: "{{ item.svm.name if item.svm is defined else item.common_name }}"
+      body: 
+        ca: "{{ item.ca }}"
+        serial: "{{ item.serial_number }}"
+      verb: "PATCH"
     loop: "{{ new_certs }}"
     loop_control: 
       label: "{{ item.common_name }}"
-    register: confirm_new_certs
-  
-  - name: Display confirmation command results
+    register: activate_new_certs
+
+  - name: Confirm new certs are all activated via `security ssl show -common-name <common name>`
+    netapp.ontap.na_ontap_rest_cli: 
+      <<: *login
+      command: 'security/ssl'
+      params: 
+        server-enabled: "true"
+        serial: "{{ item.serial_number }}"
+        common-name: "{{ item.common_name }}"
+      verb: "GET"
+    loop: "{{ new_certs }}"
+    loop_control: 
+      label: "{{ item.common_name }}"
+    register: confirm_new_certs_active
+
+  - name: Log of confirm_new_certs_active results from previous task
     ansible.builtin.debug: 
-      msg: "return from command: \n\n {{ item.msg.stdout_lines | join('\n') }}"
-    loop: "{{ confirm_new_certs.results }}"
-    loop_control: 
-      label: "{{ item.msg.invoked_command }}" 
-  
-  - name: Set active_ssl_certs list based on confirm_new_certs
-    set_fact:
-      active_ssl_certs: "{{ confirm_new_certs.results | map(attribute='msg') | map(attribute='stdout_lines') | list | flatten | join('\n')}}"
+      var: confirm_new_certs_active
 
-  - name: Log of active_ssl_certs
-    ansible.builtin.debug:
-      msg: "{{ active_ssl_certs }}"
-
-  - name: Safety check - if any of our certs_to_renew serials are still active, throw an error
+  - name: Safety check - everything in confirm_new_certs_active should have item.msg.num_records = 1  
     ansible.builtin.fail:
-      msg: "{{ item.common_name }} - {{ item.serial_number }} is still listed as an active ssl cert"
-    loop: "{{ certs_to_renew }}"
+      msg: "{{ item.item.common_name }} - {{ item.item.serial_number }} not found in `security ssl show -common-name {{ item.item.common_name }}`"
+    loop: "{{ confirm_new_certs_active.results }}"
     loop_control: 
-      label: "{{ item.name }} - {{ item.serial_number }}"
-    when: item.serial_number in active_ssl_certs  
+      label: "{{ item.item.common_name }} - {{ item.item.serial_number }}"
+    when: item.msg.num_records == 0  
   
   - name: Delete the old, inactive certificates from initial certs_to_renew query
     # ansible.builtin.debug:
