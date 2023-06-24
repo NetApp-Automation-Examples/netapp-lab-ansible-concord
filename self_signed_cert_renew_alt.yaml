@@ -131,7 +131,7 @@
       verb: "PATCH"
     loop: "{{ new_self_signed_certs }}"
     loop_control: 
-      label: "{{ item.common_name }}"
+      label: "{{ item.common_name }} - {{ item.serial }}"
     register: activate_new_self_signed_certs
 
   - name: Confirm new self-signed certs are all activated via `security ssl show -common-name <common name>`
@@ -145,12 +145,20 @@
       verb: "GET"
     loop: "{{ new_self_signed_certs }}"
     loop_control: 
-      label: "{{ item.common_name }}"
+      label: "{{ item.common_name }} - {{ item.serial }}"
     register: confirm_new_self_signed_certs_active
 
   - name: Log of confirm_new_self_signed_certs_active results from previous task
     ansible.builtin.debug: 
       var: confirm_new_self_signed_certs_active
+
+  - name: Set new_active_self_signed_certs fact
+    ansible.builtin.set_fact:
+      new_active_self_signed_certs: "{{ confirm_new_self_signed_certs_active['msg']['records'] }}"
+
+  - name: Log of new_active_self_signed_certs 
+    ansible.builtin.debug: 
+      var: new_active_self_signed_certs
 
   - name: Safety check - everything in confirm_new_self_signed_certs_active should have item.msg.num_records = 1  
     ansible.builtin.fail:
@@ -159,17 +167,38 @@
     loop_control: 
       label: "{{ item.item.common_name }} - {{ item.item.serial }}"
     when: item.msg.num_records == 0  
-  
-  - name: Delete the old, inactive certificates from initial self_signed_certs filtered results
+
+  - name: Time to clean up inactive certificates. Grab certs matching common-name/ca from 
+          new_active_self_signed_certs, but NOT containing the cert_name_append. This will 
+          ensure we are not grabbing any certs unrelated to the self-signed certs we just activated
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: ['security/certificates']
+      parameters: 
+        type: server
+        scope: "{{ cert_scope }}"
+        common_name: "{{ new_active_self_signed_certs | flatten | map(attribute='common_name') | join('|') }}"
+        ca: "{{ new_active_self_signed_certs | flatten | map(attribute='ca') | join('|') }}"
+        name: "!*{{ cert_name_append }}"
+      fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
+       
+  - name: Set inactive_self_signed_certs fact
+    ansible.builtin.set_fact:
+      inactive_self_signed_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+
+  - name: Log of inactive_self_signed_certs
+    ansible.builtin.debug:
+      var: inactive_self_signed_certs
+
+  - name: Delete inactive_self_signed_certs 
     # ansible.builtin.debug:
     #   msg: "Would delete {{ item.name }} - {{ item.serial_number }}"
-    na_ontap_security_certificates: 
+    netapp.ontap.na_ontap_security_certificates: 
       <<: *login
       state: absent
-      name: "{{ item.cert_name }}"
-      common_name: "{{ item.common_name }}"
+      name: "{{ item.name }}"
       type: server
-      svm: "{{ item.vserver }}"
+      svm: "{{ item.svm.name if item.svm is defined else omit }}"
     loop: "{{ self_signed_certs }}"
     loop_control: 
-      label: "{{ item.cert_name }} - {{ item.serial }}"
+      label: "{{ item.common_name }} - {{ item.serial_number }}"
