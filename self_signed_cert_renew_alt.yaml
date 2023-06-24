@@ -1,5 +1,5 @@
 ---
-- name: Renewing {{ cert_scope }} self-signed SSL certificates 
+- name: Renewing {{ cert_scope }} self-signed SSL certificates
   # https://kb.netapp.com/onprem/ontap/dm/Encryption/How_to_renew_a_Self-Signed_SSL_certificate_in_ONTAP_9_10_0_and_earlier
   hosts: "{{ ansible_limit | default('localhost') }}"
   gather_facts: yes
@@ -7,6 +7,7 @@
   collections:
     - netapp.ontap
   vars: 
+    dry_run: true
     current_date_time: "{{ ansible_date_time.iso8601 }}"
     cert_name_append: "_{{ ansible_date_time.iso8601_basic_short }}_"
     # remove ",cluster" to just do SVM certs, and vice versa 
@@ -75,6 +76,16 @@
     - meta: end_host
     when: self_signed_certs is undefined
 
+  - block: 
+    - name: End playbook prior to any certs getting created / deleted if dry_run is true
+      ansible.builtin.debug: 
+        msg: "Dry run on {{ inventory_hostname }}. self_signed_certs would have been used
+              to create new self-signed certificates with the same common name / ca, activate
+              them, and then delete the originals. Check active_certs to confirm any external 
+              certs are not in self_signed_certs"
+    - meta: end_play
+    when: dry_run is true
+
   - name: Create new self-signed certificates with self_signed_certs
     netapp.ontap.na_ontap_security_certificates: 
       <<: *login
@@ -87,16 +98,6 @@
     loop: "{{ self_signed_certs }}"
     loop_control: 
       label: "{{ item.cert_name }}"
-
-  # - name: Get Serial Numbers from newly generated self-signed certificates
-  #   include_tasks: tasks/ontap_get_cluster_info_rest.yml
-  #   vars: 
-  #     gather_subset: ['security/certificates']
-  #     parameters: 
-  #       type: server
-  #       scope: "{{ cert_scope }}"
-  #       name: "*{{ cert_name_append }}"
-  #     fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
 
   - name: Get Serial Numbers from newly generated self-signed certificates
     netapp.ontap.na_ontap_rest_cli: 
