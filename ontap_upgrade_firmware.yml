@@ -1,0 +1,29 @@
+---
+- name: Run Disk Qual/Firmware packages  
+  hosts: "{{ ansible_limit }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  vars_files: 
+    - http_server
+  vars:
+    ontap_firmware_packages:
+      - qual_devices.zip
+      - all_shelf_fw.zip
+      - all.zip
+  tasks:
+  - name: Check url
+    debug: 
+      var: http_server_url
+    run_once: true
+  - name: Push all files, confirm successful download
+    netapp.ontap.na_ontap_firmware_upgrade:
+      state: present
+      package_url: "{{ http_server_url }}/all.zip"
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+    loop: "{{ ontap_firmware_packages }}"
