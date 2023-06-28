@@ -26,4 +26,5 @@
       password: "{{ ontap_password }}"
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
+      fail_on_502_error: true
     loop: "{{ ontap_firmware_packages }}"
