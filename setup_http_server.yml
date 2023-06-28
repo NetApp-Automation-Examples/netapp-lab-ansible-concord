@@ -19,9 +19,15 @@
   - name: Enable nginx 
     ansible.builtin.systemd:
       name: nginx
-      enabled: true
-  - name: Configure ngnix
-    
+      enabled: true    
+  - name: Configure Nginx
+    ansible.builtin.template:
+      src: templates/nginx.conf.j2
+      dest: /etc/nginx/nginx.conf
+  - name: restart nginx
+    ansible.builtin.systemd: 
+      name: nginx 
+      state: restarted
   - name: Upload file(s) if present 
     ansible.builtin.copy:
       src: "{{ item }}"

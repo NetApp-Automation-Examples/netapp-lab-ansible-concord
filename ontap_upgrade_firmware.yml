@@ -20,7 +20,7 @@
   - name: Push all files, confirm successful download
     netapp.ontap.na_ontap_firmware_upgrade:
       state: present
-      package_url: "{{ http_server_url }}/all.zip"
+      package_url: "{{ http_server_url }}/{{ item }}"
       hostname: "{{ ontap_hostname }}"
       username: "{{ ontap_username }}"
       password: "{{ ontap_password }}"
