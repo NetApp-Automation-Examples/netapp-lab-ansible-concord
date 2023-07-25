@@ -1,3 +1,12 @@
+[windows]
+dc1 ansible_host=dc1.demo.netapp.com
+
+[windows:vars]
+ansible_connection=winrm
+ansible_port=5986
+ansible_winrm_server_cert_validation=ignore
+ansible_user=administrator
+
 [lab_ontap]
 cluster1 ontap_cluster_lif=192.168.0.101
 cluster2 ontap_cluster_lif=192.168.0.102

@@ -1,0 +1,27 @@
+---
+- name: Examples of calling Powershell from Ansible, assuming winrm is set up on Windows target (see scripts/prepWinHost.ps1)
+  hosts: "{{ ansible_limit | default('windows') }}"
+  gather_facts: false
+  vars: 
+    ansible_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+  - name: Call inline 
+    ansible.windows.win_powershell:
+      script: |
+        $hostname = hostname
+        echo "Hello World from ${hostname}"
+    register: inline_res
+  - name: View inline result
+    ansible.builtin.debug: 
+      var: inline_res
+  - name: Put script on Windows host
+    ansible.windows.win_copy:
+      src: scripts/script.ps1
+      dest: C:\Temp\
+  - name: Call script
+    ansible.windows.win_powershell:
+      script: C:\Temp\script.ps1
+    register: script_res
+  - name: View script result
+    ansible.builtin.debug:
+      var: script_res 
