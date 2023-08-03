@@ -81,7 +81,7 @@
       ansible.builtin.debug: 
         msg: "Dry run on {{ inventory_hostname }}. self_signed_certs would have been used
               to create new self-signed certificates with the same common name / ca, activate
-              them, and then delete the originals. Check active_certs to confirm any external 
+              them, and then cleanup ALL old certs (even inactive external CA certs). Check active_certs to confirm any external 
               certs are not in self_signed_certs"
     - meta: end_play
     when: dry_run is true
@@ -170,30 +170,49 @@
       label: "{{ item.item.common_name }} - {{ item.item.serial }}"
     when: item.msg.num_records == 0  
 
-  - name: Time to clean up inactive certificates. Grab certs matching common-name/ca from 
-          new_active_self_signed_certs, but NOT containing the cert_name_append. This will 
-          ensure we are cleaning up the old certs, but not accidentally grabbing any unrelated 
-          to the self-signed certs we just activated
+  - name: Let's get ALL active certs now that we've activated everything. We'll use this to ensure we only delete
+          inactive certs (security ssl show -server-enabled true)
+    netapp.ontap.na_ontap_rest_cli: 
+      <<: *login
+      command: 'security/ssl'
+      params: 
+        server-enabled: "true"
+        fields: "ca,common-name,serial" 
+      verb: "GET"
+    register: get_updated_active_certs
+
+  - name: Log of updated_active_certs
+    ansible.builtin.debug: 
+      var: get_updated_active_certs
+
+  - name: Set updated_active_certs fact 
+    ansible.builtin.set_fact:
+      updated_active_certs: "{{ get_updated_active_certs['msg']['records'] }}"
+
+  - name: Log of active_certs 
+    ansible.builtin.debug: 
+      var: updated_active_certs
+
+  - name: Time to clean up ALL inactive certificates. Grab certs that do not match updated_active_certs
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
     vars: 
       gather_subset: ['security/certificates']
       parameters: 
         type: server
         scope: "{{ cert_scope }}"
-        common_name: "{{ new_active_self_signed_certs | flatten | map(attribute='common_name') | join('|') }}"
-        ca: "{{ new_active_self_signed_certs | flatten | map(attribute='ca') | join('|') }}"
-        name: "!*{{ cert_name_append }}"
+        serial_number: "!{{ updated_active_certs | flatten | map(attribute='serial') | join('&!') }}"
+        ca: "!{{ updated_active_certs | flatten | map(attribute='ca') | join('&!') }}"
       fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
 
-  - name: Set inactive_self_signed_certs fact
+  - name: Set all_inactive_certs fact
     ansible.builtin.set_fact:
-      inactive_self_signed_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+      all_inactive_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
 
-  - name: Log of inactive_self_signed_certs
+  - name: Log of all_inactive_certs
     ansible.builtin.debug:
-      var: inactive_self_signed_certs
+      var: all_inactive_certs
 
-  - name: Delete inactive_self_signed_certs 
+  - name: Delete all_inactive_certs to finish cleanup, au revoir. 
     # ansible.builtin.debug:
     #   msg: "Would delete {{ item.name }} - {{ item.serial_number }}"
     netapp.ontap.na_ontap_security_certificates: 
@@ -202,6 +221,6 @@
       name: "{{ item.name }}"
       type: server
       svm: "{{ item.svm.name if item.svm is defined else omit }}"
-    loop: "{{ inactive_self_signed_certs }}"
+    loop: "{{ all_inactive_certs }}"
     loop_control: 
       label: "{{ item.common_name }} - {{ item.serial_number }}"
