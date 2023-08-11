@@ -1,5 +1,5 @@
 ---
-- name: Renewing {{ cert_scope }} self-signed SSL certificates 
+- name: Renewing {{ cert_scope }} self-signed SSL certificates
   # https://kb.netapp.com/onprem/ontap/dm/Encryption/How_to_renew_a_Self-Signed_SSL_certificate_in_ONTAP_9_10_0_and_earlier
   hosts: "{{ ansible_limit | default('localhost') }}"
   gather_facts: yes
@@ -7,6 +7,7 @@
   collections:
     - netapp.ontap
   vars: 
+    dry_run: true
     current_date_time: "{{ ansible_date_time.iso8601 }}"
     cert_name_append: "_{{ ansible_date_time.iso8601_basic_short }}_"
     # remove ",cluster" to just do SVM certs, and vice versa 
@@ -14,8 +15,8 @@
     #expired_buffer: 30 # days
     expiry_time:  P365DT # 1 year
     # Set to False to ignore expired/expiring dates and just renew all certs
-    renew_only_expiring: false
-    expiry_time_query: "{{ '<'+current_date_time if renew_only_expiring else '*'}}"
+    #renew_only_expiring: false
+    #expiry_time_query: "{{ '<'+current_date_time if renew_only_expiring else '*'}}"
     login: &login
       hostname: "{{ ontap_hostname }}"
       username: "{{ ontap_username }}"
@@ -23,120 +24,226 @@
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
   tasks:
-  # TODO: Safety check - make sure below only grabs self-signed certs. 
-  # We cannot use intermediate certs field on a GET :/ 
-  - name: Gather self-signed certificates to renew on {{ inventory_hostname }} ({{ cert_scope }}, {{ 'expired certs' if renew_only_expired else 'all certs'}})
-    include_tasks: tasks/ontap_get_cluster_info_rest.yml
-    vars: 
-      gather_subset: ['security/certificates']
-      parameters: 
-        type: server
-        scope: "{{ cert_scope }}"
-        expiry_time: "{{ expiry_time_query }}"
-      fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number','type','expiry_time']
+  - name: Get active certificates (security ssl show -server-enabled true) on {{ inventory_hostname }} 
+    netapp.ontap.na_ontap_rest_cli: 
+      <<: *login
+      command: 'security/ssl'
+      params: 
+        server-enabled: "true"
+        fields: "ca,common-name,serial" 
+      verb: "GET"
+    register: get_active_certs
 
-  - name: Set certs_to_renew Fact based on above query
-    set_fact:
-      certs_to_renew: "{{ ontap_rest_info['security/certificates']['records'] }}"
-    when: ontap_rest_info['security/certificates']['num_records'] > 0
+  - name: Log of get_active_certs
+    ansible.builtin.debug: 
+      var: get_active_certs
+
+  - name: Set active_certs fact 
+    ansible.builtin.set_fact:
+      active_certs: "{{ get_active_certs['msg']['records'] }}"
+
+  - name: Log of active_certs 
+    ansible.builtin.debug: 
+      var: active_certs
+
+  - name: Filter out external certs by passing active_certs serials into `security certificate show -type server -self-signed true`
+    netapp.ontap.na_ontap_rest_cli: 
+      <<: *login
+      command: 'security/certificate'
+      params: 
+        type: server
+        self-signed: "true"
+        serial: "{{ active_certs | flatten | map(attribute='serial') | join('|') }}"
+      verb: "GET"
+    register: get_self_signed_certs
+    
+  - name: Log of get_self_signed_certs 
+    ansible.builtin.debug: 
+      var: get_self_signed_certs
+
+  - name: Set self_signed_certs fact based on get_self_signed_certs
+    ansible.builtin.set_fact:
+      self_signed_certs: "{{ get_self_signed_certs['msg']['records'] }}"
+
+  - name: Log of self_signed_certs 
+    ansible.builtin.debug: 
+      var: self_signed_certs
 
   - block: 
-    - name: End playbook for {{ inventory_hostname }} if no matching certs found
+    - name: End playbook for {{ inventory_hostname }} if no matching self-signed certs found
       ansible.builtin.debug: 
         msg: "No certificates matching query found on {{ inventory_hostname }}"
     - meta: end_host
-    when: certs_to_renew is undefined
+    when: self_signed_certs is undefined
 
-  - name: Log of certs_to_renew 
-    ansible.builtin.debug:
-      msg: "{{ certs_to_renew }}"
+  - block: 
+    - name: End playbook prior to any certs getting created / deleted if dry_run is true
+      ansible.builtin.debug: 
+        msg: "Dry run on {{ inventory_hostname }}. self_signed_certs would have been used
+              to create new self-signed certificates with the same common name / ca, activate
+              them, and then cleanup ALL old certs (even inactive external CA certs). Check active_certs to confirm any external 
+              certs are not in self_signed_certs"
+    - meta: end_play
+    when: dry_run is true
 
-  - name: Create new self-signed certificates with certs_to_renew
+  - name: Create new self-signed certificates with self_signed_certs
     netapp.ontap.na_ontap_security_certificates: 
       <<: *login
       state: present
       name: "{{ item.common_name }}{{ cert_name_append }}"
       common_name: "{{ item.common_name }}"
       type: server
-      svm: "{{ item.svm.name if item.svm is defined else omit }}"
+      svm: "{{ item.vserver }}"
       expiry_time: "{{ expiry_time }}"
-    loop: "{{ certs_to_renew }}"
+    loop: "{{ self_signed_certs }}"
     loop_control: 
-      label: "{{ item.name }}"
+      label: "{{ item.cert_name }}"
 
-  - name: Get Serial Number from newly generated self-signed certificates
-    include_tasks: tasks/ontap_get_cluster_info_rest.yml
-    vars: 
-      gather_subset: ['security/certificates']
-      parameters: 
+  - name: Get Serial Numbers from newly generated self-signed certificates
+    netapp.ontap.na_ontap_rest_cli: 
+      <<: *login
+      command: 'security/certificate'
+      params: 
         type: server
-        scope: "{{ cert_scope }}"
-        name: "*{{ cert_name_append }}"
-        # Safety check - self-signed certs will not have any intermediate certs
-        intermediate_certificates: ""        
-      fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
-       
-  - name: Set new_certs fact
+        self-signed: "true"
+        cert-name: "*{{ cert_name_append }}"
+      verb: "GET"
+    register: get_new_self_signed_certs
+    
+  - name: Set new_self_signed_certs fact
     ansible.builtin.set_fact:
-      new_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+      new_self_signed_certs: "{{ get_new_self_signed_certs['msg']['records'] }}"
 
-  - name: Log of new_certs
+  - name: Log of new_self_signed_certs
     ansible.builtin.debug:
-      msg: "{{ new_certs }}"
+      msg: "{{ new_self_signed_certs }}"
 
-    # As of May 2023, REST API does not have security ssl modify command
   - name: Activate new self-signed certificates
     netapp.ontap.na_ontap_rest_cli: 
       <<: *login
       command: "security/ssl"
       params: 
         server-enabled: "true"
-        vserver: "{{ item.svm.name if item.svm is defined else item.common_name }}"
+        vserver: "{{ item.vserver }}"
       body: 
         ca: "{{ item.ca }}"
-        serial: "{{ item.serial_number }}"
+        serial: "{{ item.serial }}"
       verb: "PATCH"
-    loop: "{{ new_certs }}"
+    loop: "{{ new_self_signed_certs }}"
     loop_control: 
-      label: "{{ item.common_name }}"
-    register: activate_new_certs
+      label: "{{ item.common_name }} - {{ item.serial }}"
+    register: activate_new_self_signed_certs
 
-  - name: Confirm new certs are all activated via `security ssl show -common-name <common name>`
+  - name: Confirm new self-signed certs are all activated via `security ssl show -common-name <common name>`
     netapp.ontap.na_ontap_rest_cli: 
       <<: *login
       command: 'security/ssl'
       params: 
         server-enabled: "true"
-        serial: "{{ item.serial_number }}"
+        serial: "{{ item.serial }}"
         common-name: "{{ item.common_name }}"
+        fields: "ca"
       verb: "GET"
-    loop: "{{ new_certs }}"
+    loop: "{{ new_self_signed_certs }}"
     loop_control: 
-      label: "{{ item.common_name }}"
-    register: confirm_new_certs_active
+      label: "{{ item.common_name }} - {{ item.serial }}"
+    register: confirm_new_self_signed_certs_active
 
-  - name: Log of confirm_new_certs_active results from previous task
+  - name: Log of confirm_new_self_signed_certs_active results from previous task
     ansible.builtin.debug: 
-      var: confirm_new_certs_active
+      var: confirm_new_self_signed_certs_active
 
-  - name: Safety check - everything in confirm_new_certs_active should have item.msg.num_records = 1  
+  - name: Set new_active_self_signed_certs fact
+    ansible.builtin.set_fact:
+      new_active_self_signed_certs: "{{ confirm_new_self_signed_certs_active['results'] | map(attribute='msg.records') | list }}"
+    loop: 
+
+  - name: Log of new_active_self_signed_certs 
+    ansible.builtin.debug: 
+      var: new_active_self_signed_certs
+
+  - name: Safety check - everything in confirm_new_self_signed_certs_active should have item.msg.num_records = 1  
     ansible.builtin.fail:
-      msg: "{{ item.item.common_name }} - {{ item.item.serial_number }} not found in `security ssl show -common-name {{ item.item.common_name }}`"
-    loop: "{{ confirm_new_certs_active.results }}"
+      msg: "{{ item.item.common_name }} - {{ item.item.serial }} not found in `security ssl show -common-name {{ item.item.common_name }}`"
+    loop: "{{ confirm_new_self_signed_certs_active.results }}"
     loop_control: 
-      label: "{{ item.item.common_name }} - {{ item.item.serial_number }}"
+      label: "{{ item.item.common_name }} - {{ item.item.serial }}"
     when: item.msg.num_records == 0  
+
+  - name: Let's get ALL active certs now that we've activated everything. We'll use this to ensure we only delete
+          inactive certs (security ssl show -server-enabled true)
+    netapp.ontap.na_ontap_rest_cli: 
+      <<: *login
+      command: 'security/ssl'
+      params: 
+        server-enabled: "true"
+        fields: "ca,common-name,serial" 
+      verb: "GET"
+    register: get_updated_active_certs
+
+  - name: Log of updated_active_certs
+    ansible.builtin.debug: 
+      var: get_updated_active_certs
+
+  - name: Set updated_active_certs fact 
+    ansible.builtin.set_fact:
+      updated_active_certs: "{{ get_updated_active_certs['msg']['records'] }}"
+
+  - name: Log of active_certs 
+    ansible.builtin.debug: 
+      var: updated_active_certs 
+
+  # I cannot figure out how to get this query to work with the ONTAP REST API so I give up for now, we'll
+  # Just have to grab them all and filter inline I guess 
+  # - name: Time to clean up ALL inactive certificates. Grab certs that do not match updated_active_certs
+  #   include_tasks: tasks/ontap_get_cluster_info_rest.yml
+  #   vars: 
+  #     gather_subset: ['security/certificates']
+  #     parameters: 
+  #       type: server
+  #       scope: "{{ cert_scope }}"
+  #       serial_number: "!{{ updated_active_certs | flatten | map(attribute='serial') | join('|') }}"
+  #       ca: "!{{ updated_active_certs | flatten | map(attribute='ca') | join('|') }}"
+  #     fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
+
+  - name: Grab all certs, we will filter in next step
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: ['security/certificates']
+      parameters: 
+        type: server
+        scope: "{{ cert_scope }}"
+      fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
+
+  - name: Set all_certs fact
+    ansible.builtin.set_fact:
+      all_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+
+  - name: Log of all_certs
+    ansible.builtin.debug:
+      var: all_certs
   
-  - name: Delete the old, inactive certificates from initial certs_to_renew query
+  - name: Filter out active certs, set all_inactive_certs fact
+    set_fact:
+      all_inactive_certs: "{{ all_inactive_certs|default([]) + [ item ] }}"
+    loop: "{{ all_certs }}"
+    when: item.serial_number not in updated_active_certs | flatten | map(attribute='serial')
+    loop_control: 
+      label: "{{ item.common_name }} - {{ item.serial_number }}"
+
+  - name: Log of all_inactive_certs
+    ansible.builtin.debug:
+      var: all_inactive_certs
+
+  - name: Delete all_inactive_certs to finish cleanup, au revoir. 
     # ansible.builtin.debug:
     #   msg: "Would delete {{ item.name }} - {{ item.serial_number }}"
-    na_ontap_security_certificates: 
+    netapp.ontap.na_ontap_security_certificates: 
       <<: *login
       state: absent
       name: "{{ item.name }}"
-      common_name: "{{ item.common_name }}"
       type: server
       svm: "{{ item.svm.name if item.svm is defined else omit }}"
-    loop: "{{ certs_to_renew }}"
+    loop: "{{ all_inactive_certs }}"
     loop_control: 
-      label: "{{ item.name }} - {{ item.serial_number }}"
+      label: "{{ item.common_name }} - {{ item.serial_number }}"
