@@ -193,43 +193,19 @@
     ansible.builtin.debug: 
       var: updated_active_certs 
 
-  # I cannot figure out how to get this query to work with the ONTAP REST API so I give up for now, we'll
-  # Just have to grab them all and filter inline I guess 
-  # - name: Time to clean up ALL inactive certificates. Grab certs that do not match updated_active_certs
-  #   include_tasks: tasks/ontap_get_cluster_info_rest.yml
-  #   vars: 
-  #     gather_subset: ['security/certificates']
-  #     parameters: 
-  #       type: server
-  #       scope: "{{ cert_scope }}"
-  #       serial_number: "!{{ updated_active_certs | flatten | map(attribute='serial') | join('|') }}"
-  #       ca: "!{{ updated_active_certs | flatten | map(attribute='ca') | join('|') }}"
-  #     fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
-
-  - name: Grab all certs, we will filter in next step
+  - name: Time to clean up ALL inactive certificates. Grab certs that do not match updated_active_certs
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
     vars: 
       gather_subset: ['security/certificates']
       parameters: 
         type: server
         scope: "{{ cert_scope }}"
+        serial_number: "!{{ updated_active_certs | flatten | map(attribute='serial') | join(',!') }}"
       fields: ['uuid', 'name', 'svm', 'common_name','ca', 'serial_number']
 
-  - name: Set all_certs fact
+  - name: Set all_inactive_certs fact
     ansible.builtin.set_fact:
-      all_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
-
-  - name: Log of all_certs
-    ansible.builtin.debug:
-      var: all_certs
-  
-  - name: Filter out active certs, set all_inactive_certs fact
-    set_fact:
-      all_inactive_certs: "{{ all_inactive_certs|default([]) + [ item ] }}"
-    loop: "{{ all_certs }}"
-    when: item.serial_number not in updated_active_certs | flatten | map(attribute='serial')
-    loop_control: 
-      label: "{{ item.common_name }} - {{ item.serial_number }}"
+      all_inactive_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
 
   - name: Log of all_inactive_certs
     ansible.builtin.debug:
