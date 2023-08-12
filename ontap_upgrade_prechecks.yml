@@ -1,0 +1,44 @@
+---
+- name: Run Through Pre-Checks Before Upgrading ONTAP   
+  hosts: "{{ ansible_limit }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  vars:
+    login: &login
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+
+  tasks:
+  - name: The value in CPU and Disk Util should not exceed 50%
+    netapp.ontap.na_ontap_ssh_command:
+      <<: *login
+      command: statistics show-periodic -iterations 10
+      privilege: adv
+      accept_unknown_host_keys: true
+    register: cpu_disk_check
+
+  - name: Log of cpu_disk_check
+    ansible.builtin.debug: 
+      var: cpu_disk_check
+
+  - name: > 
+            a. verify the relational database epoch and database epoch match for each node
+            b. verify the per-ring quorum master is the same for all nodes. [Each ring might 
+            have a different quorum master]
+    netapp.ontap.na_ontap_rest_cli: 
+      <<: *login
+      command: 'cluster/ring'
+      params: 
+        unitname: "vldb"
+        fields: "node,unitname,epoch,db-epoch,db-trnxs,master,online"
+      verb: "GET"
+    register: verify_cluster_ring
+
+  - name: Log of verify_cluster_ring
+    ansible.builtin.debug: 
+      var: verify_cluster_ring
