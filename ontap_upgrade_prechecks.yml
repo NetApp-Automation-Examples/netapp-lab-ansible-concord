@@ -6,6 +6,7 @@
   collections:
     - netapp.ontap
   vars:
+    cluster_rings: ['vldb','mgmt','vifmgr','bcomd','crs']
     login: &login
       hostname: "{{ ontap_hostname }}"
       username: "{{ ontap_username }}"
@@ -14,17 +15,32 @@
       validate_certs: "{{ validate_certs }}"
 
   tasks:
-  - name: The value in CPU and Disk Util should not exceed 50%
-    netapp.ontap.na_ontap_ssh_command:
-      <<: *login
-      command: statistics show-periodic -iterations 10
-      privilege: adv
-      accept_unknown_host_keys: true
-    register: cpu_disk_check
+  - name: Get cluster node list / count
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: ['cluster/nodes']
 
-  - name: Log of cpu_disk_check
-    ansible.builtin.debug: 
-      var: cpu_disk_check
+  - name: Set cluster node count  
+    ansible.builtin.set_fact: 
+      cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
+      cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+
+  - name: Log of cluster node count 
+    ansible.builtin.debug:
+      var: cluster_node_count
+
+
+  # - name: The value in CPU and Disk Util should not exceed 50%
+  #   netapp.ontap.na_ontap_ssh_command:
+  #     <<: *login
+  #     command: statistics show-periodic -iterations 10
+  #     privilege: adv
+  #     accept_unknown_host_keys: true
+  #   register: cpu_disk_check
+
+  # - name: Log of cpu_disk_check
+  #   ansible.builtin.debug: 
+  #     var: cpu_disk_check
 
   - name: > 
             a. verify the relational database epoch and database epoch match for each node
@@ -37,8 +53,63 @@
         unitname: "vldb"
         fields: "node,unitname,epoch,db-epoch,db-trnxs,master,online"
       verb: "GET"
+    loop: "{{ cluster_rings }}"
     register: verify_cluster_ring
 
   - name: Log of verify_cluster_ring
     ansible.builtin.debug: 
       var: verify_cluster_ring
+
+  # - name: For larger clusters, move epsilon to first node, if not already there 
+  # cluster show -fields epsilon 
+  # 9a. cluster modify -node epsilonnode -epsilon false 
+  # 9b. cluster modify -node nodeA -epsilon true 
+  # 9c. cluster show -fields epsilon  
+  #   when: node_count > 2
+
+  - name: Verify each node is in SAN quorum
+    netapp.ontap.na_ontap_rest_cli: 
+      <<: *login
+      command: 'event/log'
+      params: 
+        message-name: "scsiblade.*"
+      verb: "GET"
+    register: verify_san_quorum
+
+  - name: Log of verify_san_quorum
+    ansible.builtin.debug: 
+      var: verify_san_quorum
+
+  - name: Verify SAN (iscsi) configuration. Validate server side is set for redundancy.
+    netapp.ontap.na_ontap_rest_cli: 
+      <<: *login
+      command: 'iscsi/initiator'
+      params: 
+        fields: "igroup,initiator-name,tpgroup"
+      verb: "GET"
+    register: verify_iscsi
+
+  - name: Log of verify_iscsi
+    ansible.builtin.debug: 
+      var: verify_iscsi
+
+  - name: Verify SAN (fcp) configuration. Validate server side is set for redundancy.
+    netapp.ontap.na_ontap_rest_cli: 
+      <<: *login
+      command: 'fcp/initiator'
+      params: 
+        fields: "igroup,wwpn,lif"
+      verb: "GET"
+    register: verify_fcp
+
+  - name: Log of verify_fcp
+    ansible.builtin.debug: 
+      var: verify_fcp
+
+
+  - name: For two node clusters, ensure HA is enabled 
+    netapp.ontap.na_ontap_cluster_ha:
+      <<: *login
+      state: present
+    when: cluster_node_count == 2 
+
