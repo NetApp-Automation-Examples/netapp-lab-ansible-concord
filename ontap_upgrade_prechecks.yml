@@ -15,140 +15,164 @@
       validate_certs: "{{ validate_certs }}"
 
   tasks:
-  - name: Get cluster node list / count
-    include_tasks: tasks/ontap_get_cluster_info_rest.yml
-    vars: 
-      gather_subset: ['cluster/nodes']
-
-  - name: Set cluster node count  
-    ansible.builtin.set_fact: 
-      cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
-      cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
-
-  - name: Log of cluster node count 
-    ansible.builtin.debug:
-      var: cluster_node_count
-
-
-  - name: The value in CPU and Disk Util should not exceed 50%
-    netapp.ontap.na_ontap_ssh_command:
-      <<: *login
-      command: statistics show-periodic -iterations 10
-      privilege: adv
-      accept_unknown_host_keys: true
-    register: cpu_disk_check
-
-  - name: Log of cpu_disk_check
-    ansible.builtin.debug: 
-      var: cpu_disk_check
-
-  - name: > 
-            a. verify the relational database epoch and database epoch match for each node
-            b. verify the per-ring quorum master is the same for all nodes. [Each ring might 
-            have a different quorum master]
-    netapp.ontap.na_ontap_rest_cli: 
-      <<: *login
-      command: 'cluster/ring'
-      params: 
-        unitname: "vldb"
-        fields: "node,unitname,epoch,db-epoch,db-trnxs,master,online"
-      verb: "GET"
-    loop: "{{ cluster_rings }}"
-    register: verify_cluster_ring
-
-  - name: Log of verify_cluster_ring
-    ansible.builtin.debug: 
-      var: verify_cluster_ring
-
-  # - name: For larger clusters, move epsilon to first node, if not already there 
-  # cluster show -fields epsilon 
-  # 9a. cluster modify -node epsilonnode -epsilon false 
-  # 9b. cluster modify -node nodeA -epsilon true 
-  # 9c. cluster show -fields epsilon  
-  #   when: node_count > 2
-  
-  - name: Verify if SAN is being used by checking if there are any igroups GET /api/protocols/san/igroups
-    include_tasks: tasks/ontap_get_cluster_info_rest.yml
-    vars: 
-      gather_subset: ['protocols/san/igroups']
-
-  - name: Set san_igroups_count 
-    ansible.builtin.set_fact: 
-      san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
-
-  - name: Log of san_igroups_count 
-    ansible.builtin.debug:
-      var: san_igroups_count
-  
-  - block: 
-
-    - name: Verify each node is in SAN quorum
-      netapp.ontap.na_ontap_rest_cli: 
-        <<: *login
-        command: 'event/log'
-        params: 
-          message-name: "scsiblade.*"
-        verb: "GET"
-      register: verify_san_quorum
-
-    - name: Log of verify_san_quorum
-      ansible.builtin.debug: 
-        var: verify_san_quorum
-
-    - name: Verify SAN (iscsi) configuration. Validate server side is set for redundancy.
-      netapp.ontap.na_ontap_rest_cli: 
-        <<: *login
-        command: 'iscsi/initiator'
-        params: 
-          fields: "igroup,initiator-name,tpgroup"
-        verb: "GET"
-      register: verify_iscsi
-
-    - name: Log of verify_iscsi
-      ansible.builtin.debug: 
-        var: verify_iscsi
-
-    - name: Verify SAN (fcp) configuration. Validate server side is set for redundancy.
-      netapp.ontap.na_ontap_rest_cli: 
-        <<: *login
-        command: 'fcp/initiator'
-        params: 
-          fields: "igroup,wwpn,lif"
-        verb: "GET"
-      register: verify_fcp
-
-    - name: Log of verify_fcp
-      ansible.builtin.debug: 
-        var: verify_fcp
+    # - name: Check for bad disks
+    #   include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    #   vars: 
+    #     gather_subset: ['storage/disks'] #'protocols/san/igroups', 'cluster/nodes', 
+    #     parameters:
+    #       container_type: "broken|maintenance"
+    #       state: "pending|reconstructing "
     
-    when: san_igroups_count | int > 0
+    # - name: Log of bad disks check
+    #   ansible.builtin.debug:
+    #     var: ontap_rest_info['storage/disks']
 
-  - name: For two node clusters, ensure HA is enabled 
-    netapp.ontap.na_ontap_cluster_ha:
-      <<: *login
-      state: present
-    when: cluster_node_count == 2 
+    # - name: Fail playbook if there are bad disks present
+    #   ansible.builtin.fail: 
+    #     msg: ONTAP Upgrades cannot proceed if there are broken disks. 
+    #   when: ontap_rest_info['storage/disks']['num_records'] > 0 
 
-  - name: For any DP SnampMirrors **Destination cluster must be upgraded prior to upgrading source cluster**
-    netapp.ontap.na_ontap_rest_cli: 
-      <<: *login
-      command: 'snapmirror/list-destinations'
-      params: 
-        type: "DP"
-      verb: "GET"
-    register: verify_snapmirror_dp_destinations
+    # - name: Get cluster node list / count and SAN info
+    #   include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    #   vars: 
+    #     gather_subset: ['cluster/nodes','protocols/san/igroups']
 
-  - name: Log of verify_snapmirror_dp_destinations
-    ansible.builtin.debug: 
-      var: verify_snapmirror_dp_destinations
+    # - name: Set cluster node count and igroup count
+    #   ansible.builtin.set_fact: 
+    #     cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
+    #     cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+    #     san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
 
-  - name: Each node must not exceed 20,000 snapshot copies
-    netapp.ontap.na_ontap_rest_cli: 
-      <<: *login
-      command: 'volume/snapshot'
-      verb: "GET"
-    register: verify_snapshot_count
+    # - name: Log of cluster node count and igroup count 
+    #   ansible.builtin.debug:
+    #     msg: "{{ item }}"
+    #   loop:
+    #   - "cluster_node_count = {{ cluster_node_count }}"
+    #   - "san_igroups_count = {{ san_igroups_count }}"
 
-  - name: Log of verify_snapshot_count
-    ansible.builtin.debug: 
-      var: verify_snapshot_count
+    - name: Get "-is-sis-volume true" volumes
+      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      vars: 
+        gather_subset: ['storage/volumes']  
+        fields: ['efficiency']
+        # parameters:
+        #   efficiency.dedupe: "!none"
+          
+    - name: Log of dedupe volumes
+      ansible.builtin.debug:
+        var: ontap_rest_info['storage/volumes']
+
+  # - name: The value in CPU and Disk Util should not exceed 50%
+  #   netapp.ontap.na_ontap_ssh_command:
+  #     <<: *login
+  #     command: statistics show-periodic -iterations 10
+  #     privilege: adv
+  #     accept_unknown_host_keys: true
+  #   register: cpu_disk_check
+
+  # - name: Log of cpu_disk_check
+  #   ansible.builtin.debug: 
+  #     var: cpu_disk_check
+
+  # - name: > 
+  #           a. verify the relational database epoch and database epoch match for each node
+  #           b. verify the per-ring quorum master is the same for all nodes. [Each ring might 
+  #           have a different quorum master]
+  #   netapp.ontap.na_ontap_rest_cli: 
+  #     <<: *login
+  #     command: 'cluster/ring'
+  #     params: 
+  #       unitname: "vldb"
+  #       fields: "node,unitname,epoch,db-epoch,db-trnxs,master,online"
+  #     verb: "GET"
+  #   loop: "{{ cluster_rings }}"
+  #   register: verify_cluster_ring
+
+  # - name: Log of verify_cluster_ring
+  #   ansible.builtin.debug: 
+  #     var: verify_cluster_ring
+
+  # # - name: For larger clusters, move epsilon to first node, if not already there 
+  # # cluster show -fields epsilon 
+  # # 9a. cluster modify -node epsilonnode -epsilon false 
+  # # 9b. cluster modify -node nodeA -epsilon true 
+  # # 9c. cluster show -fields epsilon  
+  # #   when: node_count > 2
+
+  # - name: Log of san_igroups_count 
+  #   ansible.builtin.debug:
+  #     var: san_igroups_count
+  
+  # - block: 
+
+  #   - name: Verify each node is in SAN quorum
+  #     netapp.ontap.na_ontap_rest_cli: 
+  #       <<: *login
+  #       command: 'event/log'
+  #       params: 
+  #         message-name: "scsiblade.*"
+  #       verb: "GET"
+  #     register: verify_san_quorum
+
+  #   - name: Log of verify_san_quorum
+  #     ansible.builtin.debug: 
+  #       var: verify_san_quorum
+
+  #   - name: Verify SAN (iscsi) configuration. Validate server side is set for redundancy.
+  #     netapp.ontap.na_ontap_rest_cli: 
+  #       <<: *login
+  #       command: 'iscsi/initiator'
+  #       params: 
+  #         fields: "igroup,initiator-name,tpgroup"
+  #       verb: "GET"
+  #     register: verify_iscsi
+
+  #   - name: Log of verify_iscsi
+  #     ansible.builtin.debug: 
+  #       var: verify_iscsi
+
+  #   - name: Verify SAN (fcp) configuration. Validate server side is set for redundancy.
+  #     netapp.ontap.na_ontap_rest_cli: 
+  #       <<: *login
+  #       command: 'fcp/initiator'
+  #       params: 
+  #         fields: "igroup,wwpn,lif"
+  #       verb: "GET"
+  #     register: verify_fcp
+
+  #   - name: Log of verify_fcp
+  #     ansible.builtin.debug: 
+  #       var: verify_fcp
+    
+  #   when: san_igroups_count | int > 0
+
+  # - name: For two node clusters, ensure HA is enabled 
+  #   netapp.ontap.na_ontap_cluster_ha:
+  #     <<: *login
+  #     state: present
+  #   when: cluster_node_count == 2 
+
+  # - name: For any DP SnampMirrors **Destination cluster must be upgraded prior to upgrading source cluster**
+  #   netapp.ontap.na_ontap_rest_cli: 
+  #     <<: *login
+  #     command: 'snapmirror/list-destinations'
+  #     params: 
+  #       type: "DP"
+  #     verb: "GET"
+  #   register: verify_snapmirror_dp_destinations
+
+  # - name: Log of verify_snapmirror_dp_destinations
+  #   ansible.builtin.debug: 
+  #     var: verify_snapmirror_dp_destinations
+
+  # - name: Each node must not exceed 20,000 snapshot copies
+  #   netapp.ontap.na_ontap_rest_cli: 
+  #     <<: *login
+  #     command: 'volume/snapshot'
+  #     verb: "GET"
+  #   register: verify_snapshot_count
+
+  # - name: Log of verify_snapshot_count
+  #   ansible.builtin.debug: 
+  #     var: verify_snapshot_count
+
