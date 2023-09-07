@@ -2,3 +2,4 @@ netapp-lib
 requests
 ansible
 pywinrm
+paramiko

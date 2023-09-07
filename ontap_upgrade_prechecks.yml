@@ -78,19 +78,23 @@
 
       when: verify_large_dedupe_volumes.msg.num_records > 0
 
-    - name: Get cluster / node list and SAN info
-      include_tasks: tasks/ontap_get_cluster_info_rest.yml
-      vars: 
-        gather_subset: ['cluster','cluster/nodes','protocols/san/igroups']
-        parameters:
-          fields: ['*']
+    - block: 
+      - name: Get cluster / node list and SAN info
+        include_tasks: tasks/ontap_get_cluster_info_rest.yml
+        vars: 
+          gather_subset: ['cluster','cluster/nodes','protocols/san/igroups']
+          parameters:
+            fields: ['*']
 
-    - name: Set various cluster info facts
-      ansible.builtin.set_fact: 
-        cluster_info: "{{ ontap_rest_info['cluster'] }}"
-        cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
-        cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
-        san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
+      - name: Set various cluster info facts
+        ansible.builtin.set_fact: 
+          cluster_info: "{{ ontap_rest_info['cluster'] }}"
+          cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
+          cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+          san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
+      
+      tags: 
+      - onlyrunme
 
     - name: Log of cluster node count and igroup count 
       ansible.builtin.debug:
@@ -104,17 +108,17 @@
         msg: There must be three NTP servers per NetApp best practices, these are the current NTP servers configured on the cluster {{ cluster_info['ntp_servers'] | join(',') }}
       when: cluster_info['ntp_servers']|length < 3
 
-    - name: The value in CPU and Disk Util should not exceed 50%
-      netapp.ontap.na_ontap_ssh_command:
-        <<: *login
-        command: statistics show-periodic -iterations 10
-        privilege: adv
-        accept_unknown_host_keys: true
-      register: cpu_disk_check
+    # - name: The value in CPU and Disk Util should not exceed 50%
+    #   netapp.ontap.na_ontap_ssh_command:
+    #     <<: *login
+    #     command: statistics show-periodic -iterations 10
+    #     privilege: adv
+    #     accept_unknown_host_keys: true
+    #   register: cpu_disk_check      
 
-    - name: Log of cpu_disk_check
-      ansible.builtin.debug: 
-        var: cpu_disk_check
+    # - name: Log of cpu_disk_check
+    #   ansible.builtin.debug: 
+    #     var: cpu_disk_check
 
     - name: TODO - check / fail playbook if a cpu_disk_check has rows over 50% cpu / disk util
       ansible.builtin.debug: 
@@ -137,13 +141,6 @@
     - name: Log of verify_cluster_ring
       ansible.builtin.debug: 
         var: verify_cluster_ring
-
-  # - name: For larger clusters, move epsilon to first node, if not already there 
-  # cluster show -fields epsilon 
-  # 9a. cluster modify -node epsilonnode -epsilon false 
-  # 9b. cluster modify -node nodeA -epsilon true 
-  # 9c. cluster show -fields epsilon  
-  #   when: node_count > 2
 
     - name: Log of san_igroups_count 
       ansible.builtin.debug:
@@ -221,4 +218,40 @@
     - name: Log of verify_snapshot_count
       ansible.builtin.debug: 
         var: verify_snapshot_count
+
+    - block: 
+      - name: For larger clusters, find epsilon 
+        netapp.ontap.na_ontap_rest_cli: 
+          <<: *login
+          command: 'cluster'
+          params: 
+            fields: "epsilon"
+          verb: "GET"
+        register: cluster_epsilon
+
+      - name: Log of cluster_epsilon
+        ansible.builtin.debug: 
+          var: cluster_epsilon
+      
+      -block: 
+        - name: Move Epsilon to first node, if not already there
+          netapp.ontap.na_ontap_rest_cli: 
+            <<: *login
+            command: 'cluster'
+            params: 
+              epsilon: false 
+              node: hello # TODO - find way to extract epsilon node from cluster_epsilon and pass here
+            verb: "PATCH"
+          register: move_cluster_epsilon
+        when: cluster_epsilon.msg.records.0.epsilon != true
+      
+      when: cluster_node_count|int > 2
+      tags: 
+        - onlyrunme
+
+    # cluster show -fields epsilon 
+    # 9a. cluster modify -node epsilonnode -epsilon false 
+    # 9b. cluster modify -node nodeA -epsilon true 
+    # 9c. cluster show -fields epsilon  
+
 
