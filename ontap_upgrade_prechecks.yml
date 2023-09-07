@@ -21,7 +21,7 @@
         gather_subset: ['storage/disks'] #'protocols/san/igroups', 'cluster/nodes', 
         parameters:
           container_type: "broken|maintenance"
-          state: "pending|reconstructing "
+          state: "pending|reconstructing"
     
     - name: Log of bad disks check
       ansible.builtin.debug:
@@ -32,51 +32,43 @@
         msg: ONTAP Upgrades cannot proceed if there are broken disks. 
       when: ontap_rest_info['storage/disks']['num_records'] > 0 
 
-    # Haven't figured out the REST equivelant yet
-    - name: > 
-            List any deduplicated volumes over 96% 
-            "volume show -is-sis-volume true -percent-used >96 -fields aggregate,percent-used"
+    - name: >
+            Basic health check pt 1
+            (health alert show)
       netapp.ontap.na_ontap_rest_cli: 
         <<: *login
-        command: 'volume'
-        params: 
-          is-sis-volume: "true"
-          percent-used: ">96"
-          fields: "aggregate,percent-used"
+        command: 'system/health/alert'
         verb: "GET"
-      register: verify_large_dedupe_volumes
-
-    - name: Log of verify_large_dedupe_volumes
+      register: verify_health_alerts
+        
+    - name: Log of verify_health_alerts
       ansible.builtin.debug: 
-        var: verify_large_dedupe_volumes
+        var: verify_health_alerts
 
-    - block: 
-      - name: If verify_large_dedupe_volumes isn't empty, gather list of aggrs involved 
-        ansible.builtin.set_fact: 
-          large_dedupe_volumes_aggrs: "{{ large_dedupe_volumes_aggrs|default([]) + [item.aggregate] }}"
-        loop: "{{ verify_large_dedupe_volumes['msg']['records'] }}"
+    - name: Fail playbook if there are health alerts
+      ansible.builtin.fail: 
+        msg: There are health alerts that need to be addressed before upgrading ONTAP
+      when: verify_health_alerts.msg.num_records > 0
 
-      - name: Log of large_dedupe_volumes_aggrs
-        ansible.builtin.debug: 
-          var: large_dedupe_volumes_aggrs
+    - name: >
+            Basic health check pt 2
+            (health subsystem show)
+      netapp.ontap.na_ontap_rest_cli: 
+        <<: *login
+        command: 'system/health/subsystem'
+        params: 
+          fields: "health"
+        verb: "GET"
+      register: verify_health_subsystems
 
-      - name: Aggrs containing deduplicated volumes must not exceed 97% used capacity
-        netapp.ontap.na_ontap_ssh_command:
-          <<: *login
-          command: "df -A {{ large_dedupe_volumes_aggrs | join(',') }}"
-          privilege: adv
-          accept_unknown_host_keys: true
-        register: verify_large_dedupe_volumes_aggrs
+    - name: Log of verify_health_subsystems
+      ansible.builtin.debug: 
+        var: verify_health_subsystems
 
-      - name: Log of verify_large_dedupe_volumes_aggrs
-        ansible.builtin.debug: 
-          var: verify_large_dedupe_volumes_aggrs
-
-      - name: TODO - check / fail playbook if a row with over 97% is present
-        ansible.builtin.debug: 
-          msg: TODO
-
-      when: verify_large_dedupe_volumes.msg.num_records > 0
+    - name: Fail playbook if there are subsystems degraded 
+      ansible.builtin.fail: 
+        msg: There are degraded subsystems that need to be addressed before upgrading ONTAP
+      when: verify_health_subsystems.msg.records|selectattr('health','!=','ok')|list|length > 0
 
     - block: 
       - name: Get cluster / node list and SAN info
@@ -92,7 +84,6 @@
           cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
           cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
           san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
-      
       tags: 
       - onlyrunme
 
@@ -103,11 +94,6 @@
       - "cluster_node_count = {{ cluster_node_count }}"
       - "san_igroups_count = {{ san_igroups_count }}"
     
-    - name: Verify NTP Servers
-      ansible.builtin.fail:
-        msg: There must be three NTP servers per NetApp best practices, these are the current NTP servers configured on the cluster {{ cluster_info['ntp_servers'] | join(',') }}
-      when: cluster_info['ntp_servers']|length < 3
-
     - name: The value in CPU and Disk Util should not exceed 50%
       netapp.ontap.na_ontap_ssh_command:
         <<: *login
@@ -221,12 +207,6 @@
         when: cluster_epsilon_confirm.msg.records.0.epsilon != true
 
       when: cluster_node_count|int > 2
-      tags: 
-        - onlyrunme
-
-    - name: Log of san_igroups_count 
-      ansible.builtin.debug:
-        var: san_igroups_count
     
     - block: 
 
@@ -300,6 +280,95 @@
     - name: Log of verify_snapshot_count
       ansible.builtin.debug: 
         var: verify_snapshot_count
+
+    # Haven't figured out the REST equivelant yet
+    - name: > 
+            List any deduplicated volumes over 96% 
+            "volume show -is-sis-volume true -percent-used >96 -fields aggregate,percent-used"
+      netapp.ontap.na_ontap_rest_cli: 
+        <<: *login
+        command: 'volume'
+        params: 
+          is-sis-volume: "true"
+          percent-used: ">96"
+          fields: "aggregate,percent-used"
+        verb: "GET"
+      register: verify_large_dedupe_volumes
+
+    - name: Log of verify_large_dedupe_volumes
+      ansible.builtin.debug: 
+        var: verify_large_dedupe_volumes
+
+    - block: 
+      - name: If verify_large_dedupe_volumes isn't empty, gather list of aggrs involved 
+        ansible.builtin.set_fact: 
+          large_dedupe_volumes_aggrs: "{{ large_dedupe_volumes_aggrs|default([]) + [item.aggregate] }}"
+        loop: "{{ verify_large_dedupe_volumes['msg']['records'] }}"
+
+      - name: Log of large_dedupe_volumes_aggrs
+        ansible.builtin.debug: 
+          var: large_dedupe_volumes_aggrs
+
+      - name: Aggrs containing deduplicated volumes must not exceed 97% used capacity
+        netapp.ontap.na_ontap_ssh_command:
+          <<: *login
+          command: "df -A {{ large_dedupe_volumes_aggrs | join(',') }}"
+          privilege: adv
+          accept_unknown_host_keys: true
+        register: verify_large_dedupe_volumes_aggrs
+
+      - name: Log of verify_large_dedupe_volumes_aggrs
+        ansible.builtin.debug: 
+          var: verify_large_dedupe_volumes_aggrs
+
+      - name: TODO - check / fail playbook if a row with over 97% is present
+        ansible.builtin.debug: 
+          msg: TODO
+
+      when: verify_large_dedupe_volumes.msg.num_records > 0
+
+    - name: Verify NTP Servers
+      ansible.builtin.debug: 
+        var: cluster_info['ntp_servers']
+
+    - name: Fail playbook if there are not at least 3 NTP Servers
+      ansible.builtin.fail:
+        msg: There must be three NTP servers per NetApp best practices, these are the current NTP servers configured on the cluster {{ cluster_info['ntp_servers'] | join(',') }}
+      when: cluster_info['ntp_servers']|length < 3
+
+    # - name: > 
+    #         Verify cluster date 
+    #         (cluster date show)
+    #   netapp.ontap.na_ontap_rest_cli: 
+    #     <<: *login
+    #     command: 'event/log'
+    #     params: 
+    #       message-name: "scsiblade.*"
+    #     verb: "GET"
+    #   register: verify_san_quorum
+
+    - name: Log of cluster date 
+      ansible.builtin.debug: 
+        msg: "{{ item.date }}"
+      loop: "{{ cluster_nodes }}"
+      loop_control: 
+        label: "{{ item.name }}"
+      tags:
+       - onlyrunme
+
+    - name: Fail playbook if there is any variation among node timestamps 
+      ansible.builtin.fail:
+        msg: "Dates and timezones should match on all nodes"
+      when: cluster_nodes | map(attribute='date') | list | unique | length > 1
+      tags:
+       - onlyrunme
+
+     # Verify cluster and SVM health (cluster show)  
+     # storage aggr show -state !online 
+     # volume show -state !online 
+     # vserver show
+
+
 
 # TODO - nicely summarize checks in one easy to digest snapshot
 
