@@ -71,10 +71,16 @@
       when: verify_health_subsystems.msg.records|selectattr('health','!=','ok')|list|length > 0
 
     - block: 
-      - name: Get cluster / node list and SAN info
+      - name: Get cluster, node, aggr, vol, and SAN info
         include_tasks: tasks/ontap_get_cluster_info_rest.yml
         vars: 
-          gather_subset: ['cluster','cluster/nodes','protocols/san/igroups']
+          gather_subset: 
+            - cluster
+            - cluster/nodes
+            - protocols/san/igroups
+            - aggregate_info
+            - volume_info
+            - vserver_info
           parameters:
             fields: ['*']
 
@@ -84,6 +90,9 @@
           cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
           cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
           san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
+          aggregate_info: "{{ ontap_rest_info['storage/aggregates']['records'] }}"
+          volume_info: "{{ ontap_rest_info['storage/volumes']['records'] }}"
+          vserver_info: "{{ ontap_rest_info['svm/svms']['records'] }}"
       tags: 
       - onlyrunme
 
@@ -336,39 +345,75 @@
         msg: There must be three NTP servers per NetApp best practices, these are the current NTP servers configured on the cluster {{ cluster_info['ntp_servers'] | join(',') }}
       when: cluster_info['ntp_servers']|length < 3
 
-    # - name: > 
-    #         Verify cluster date 
-    #         (cluster date show)
-    #   netapp.ontap.na_ontap_rest_cli: 
-    #     <<: *login
-    #     command: 'event/log'
-    #     params: 
-    #       message-name: "scsiblade.*"
-    #     verb: "GET"
-    #   register: verify_san_quorum
-
-    - name: Log of cluster date 
+    - name: Verify cluster date 
       ansible.builtin.debug: 
         msg: "{{ item.date }}"
       loop: "{{ cluster_nodes }}"
       loop_control: 
         label: "{{ item.name }}"
-      tags:
-       - onlyrunme
 
     - name: Fail playbook if there is any variation among node timestamps 
       ansible.builtin.fail:
         msg: "Dates and timezones should match on all nodes"
       when: cluster_nodes | map(attribute='date') | list | unique | length > 1
-      tags:
-       - onlyrunme
 
-     # Verify cluster and SVM health (cluster show)  
-     # storage aggr show -state !online 
-     # volume show -state !online 
+    - name: Verify cluster health (cluster show)
+      netapp.ontap.na_ontap_rest_cli: 
+        <<: *login
+        command: 'cluster'
+        params: 
+          fields: "health,eligibility"
+        verb: "GET"
+      register: verify_cluster_health
+
+    - name: Log of verify_cluster_health
+      ansible.builtin.debug: 
+        var: verify_cluster_health
+
+    - name: Fail playbook if eligibility or health is not true 
+      ansible.builtin.fail: 
+        msg: Health and Eligibility must be true for all nodes to continue with ONTAP Upgrade
+      loop: "{{ verify_cluster_health.msg.records }}"
+      when: item.eligibility != true or item.health != true
+
+    - name: Verify aggregates are all online
+      ansible.builtin.debug: 
+        msg: "{{ item.name }}: {{ item.state }}"
+      loop: "{{ aggregate_info }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Fail playbook for any offline aggrs 
+      ansible.builtin.fail:
+        msg: You cannot proceed with ONTAP Upgrade with offline aggregates
+      when: aggregate_info | selectattr('state','!=','online') | list | length >= 1
+
+    - name: Verify volumes are all online
+      ansible.builtin.debug: 
+        msg: "{{ item.svm.name }}/{{ item.name }}: {{ item.state }}"
+      loop: "{{ volume_info }}"
+      loop_control:
+        label: "{{ item.svm.name }}/{{ item.name }}"
+
+    - name: Fail playbook for any offline volumes 
+      ansible.builtin.fail:
+        msg: You cannot proceed with ONTAP Upgrade with offline volumes
+      when: volume_info | selectattr('state','!=','online') | list | length >= 1
+
      # vserver show
+    - name: Verify svm's are all running
+      ansible.builtin.debug: 
+        msg: "{{ item.name }}: {{ item.state }}"
+      loop: "{{ vserver_info }}"
+      loop_control:
+        label: "{{ item.name }}"
+      tags: ['onlyrunme']
 
-
+    - name: Fail playbook for any svm's not running
+      ansible.builtin.fail:
+        msg: You cannot proceed with ONTAP Upgrade with offline vservers
+      when: vserver_info | selectattr('state','!=','running') | list | length >= 1
+      tags: ['onlyrunme']
 
 # TODO - nicely summarize checks in one easy to digest snapshot
 
