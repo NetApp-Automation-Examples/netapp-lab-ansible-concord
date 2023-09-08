@@ -71,7 +71,7 @@
       when: verify_health_subsystems.msg.records|selectattr('health','!=','ok')|list|length > 0
 
     - block: 
-      - name: Get cluster, node, aggr, vol, and SAN info
+      - name: Get cluster, node, aggr, vol, svm, network interfaces, and SAN info
         include_tasks: tasks/ontap_get_cluster_info_rest.yml
         vars: 
           gather_subset: 
@@ -81,6 +81,7 @@
             - aggregate_info
             - volume_info
             - vserver_info
+            - network/ip/interfaces
           parameters:
             fields: ['*']
 
@@ -93,6 +94,7 @@
           aggregate_info: "{{ ontap_rest_info['storage/aggregates']['records'] }}"
           volume_info: "{{ ontap_rest_info['storage/volumes']['records'] }}"
           vserver_info: "{{ ontap_rest_info['svm/svms']['records'] }}"
+          net_int: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
       tags: 
       - onlyrunme
 
@@ -400,21 +402,61 @@
         msg: You cannot proceed with ONTAP Upgrade with offline volumes
       when: volume_info | selectattr('state','!=','online') | list | length >= 1
 
-     # vserver show
     - name: Verify svm's are all running
       ansible.builtin.debug: 
         msg: "{{ item.name }}: {{ item.state }}"
       loop: "{{ vserver_info }}"
       loop_control:
         label: "{{ item.name }}"
-      tags: ['onlyrunme']
 
     - name: Fail playbook for any svm's not running
       ansible.builtin.fail:
         msg: You cannot proceed with ONTAP Upgrade with offline vservers
       when: vserver_info | selectattr('state','!=','running') | list | length >= 1
-      tags: ['onlyrunme']
 
+    # TODO - this feels janky and I think I should be able to do this without a loop
+    - name: Check for any LIFs not being home
+      ansible.builtin.set_fact: 
+        net_int_not_home: "{{ net_int_not_home | default([]) + [item] }}"
+      loop: "{{ net_int }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.location.is_home == False
+
+    - block:
+      - name: Log of LIFs not home
+        ansible.builtin.debug: 
+          var: net_int_not_home
+
+      - name: All LIFs should be homed prior to upgrades
+        netapp.ontap.na_ontap_rest_cli:
+          <<: *login
+          command: "network/interface/revert"
+          params: 
+            "vserver": "*"
+          verb: "PATCH"
+        register: verify_net_int_revert
+
+      - name: Log of verify_net_int_revert
+        ansible.builtin.debug: 
+          var: verify_net_int_revert
+      
+      - name: Check to make sure everything got home (net int show -is-home false)
+        netapp.ontap.na_ontap_rest_cli: 
+          <<: *login
+          command: 'network/interface'
+          params: 
+            is-home: "false"
+          verb: "GET"
+        register: verify_all_lifs_home
+
+      - name: Log of verify_all_lifs_home
+        ansible.builtin.debug: 
+          var: verify_all_lifs_home
+      
+      when: net_int_not_home is defined
+  # TODO - finish adding rest of checks
+  # TODO - add the fail playbook step at the end, and remove inline fails    
 # TODO - nicely summarize checks in one easy to digest snapshot
 
 
