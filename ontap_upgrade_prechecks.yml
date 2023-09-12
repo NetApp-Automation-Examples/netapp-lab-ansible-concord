@@ -49,8 +49,8 @@
 
     - name: Fail playbook if there are health alerts
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails + ['There are health alerts that need to be addressed.'] }}" 
+        health_fails: "{{ health_fails + ['There are health alerts that need to 
+          be addressed.'] }}" 
       when: verify_health_alerts.msg.num_records > 0
 
     - name: >
@@ -70,8 +70,8 @@
 
     - name: Fail playbook if there are subsystems degraded 
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails + ['There are degraded subsystems that need to be addressed.'] }}" 
+        health_fails: "{{ health_fails + ['There are degraded subsystems that 
+          need to be addressed.'] }}" 
       when: verify_health_subsystems.msg.records|selectattr('health','!=','ok')|list|length > 0
 
     - block: 
@@ -125,8 +125,8 @@
               TODO - Add warning condition for cpu_disk_check having any 
               rows over 50% cpu / disk util
       ansible.builtin.set_fact: 
-        health_warns: >
-          "{{ health_warns + ['There are CPU and disk utilizations over 50%.'] }}" 
+        health_warns: "{{ health_warns + ['There are CPU and disk utilizations 
+          over 50%.'] }}" 
       # TODO - obvs 
       when: 1 == 1
 
@@ -151,17 +151,19 @@
 
     - name: TODO - add fail condition for epochs not matching
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails: + ['The database epochs do not match 
-            for each node.'] }}" 
+        health_fails: "{{ health_fails + ['The database epochs do not match 
+          for each node.'] }}" 
       # TODO - obvs 
       when: 1 == 1
 
-    - name: TODO - add fail condition for epochs not matching
+    - name: timestamps
+      ansible.builtin.debug:
+        var: health_fails
+
+    - name: TODO - add fail condition for per-ring quoram not matching
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails: + ['The per-ring quorum master is not the same for 
-            all nodes.'] }}" 
+        health_fails: "{{ health_fails + ['The per-ring quorum master is not 
+          the same for all nodes.'] }}" 
       # TODO - obvs 
       when: 1 == 1
 
@@ -235,8 +237,7 @@
 
       - name: Fail playbook if epsilon is not at first node
         ansible.builtin.set_fact: 
-          health_fails: >
-            "{{ health_fails + ['`cluster show -fields epsilon` should have 
+          health_fails: "{{ health_fails + ['`cluster show -fields epsilon` should have 
             {{ cluster_epsilon_confirm.msg.records.0.node }} as epsilon, 
             but currently 
             {{ (cluster_epsilon.msg.records |selectattr('epsilon','true')|list)[0]['node'] }}
@@ -333,8 +334,8 @@
 
     - name: Warn about DP SnapMirror upgrade order
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails + ['Each node must not exceed 20,000 snapshot copies'] }}"
+        health_fails: "{{ health_fails + ['Each node must not exceed 20,000 
+          snapshot copies'] }}"
       when: verify_snapshot_count.msg.num_records > 20000
 
     # Haven't figured out the REST equivelant yet
@@ -379,9 +380,8 @@
 
       - name: TODO - check / fail playbook if a row with over 97% is present
         ansible.builtin.set_fact: 
-          health_fails: >
-            "{{ health_fails + ['Aggrs containing deduplicated volumes must 
-            not exceed 97% used capacity'] }}"
+          health_fails: "{{ health_fails + ['Aggrs containing deduplicated 
+            volumes must not exceed 97% used capacity'] }}"
         # TODO obvs 
         when: 1 == 1
 
@@ -393,8 +393,7 @@
 
     - name: Fail playbook if there are not at least 3 NTP Servers
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails + ['There must be at least three NTP servers 
+        health_fails: "{{ health_fails + ['There must be at least three NTP servers 
             per NetApp best practices'] }}"
       when: cluster_info['ntp_servers']|length < 3
 
@@ -407,8 +406,7 @@
 
     - name: Fail playbook if there is any variation among node timestamps 
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails + ['Dates and timezones must match on all nodes'] }}"
+        health_fails: "{{ health_fails + ['Dates and timezones must match on all nodes'] }}"
       when: cluster_nodes | map(attribute='date') | list | unique | length > 1
 
     - name: Verify cluster health (cluster show)
@@ -426,8 +424,8 @@
 
     - name: Fail playbook if eligibility or health is not true 
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails + ['Health and Eligibility must be `true` for all nodes'] }}"
+        health_fails: "{{ health_fails + ['Health and Eligibility must 
+          be `true` for all nodes'] }}"
       loop: "{{ verify_cluster_health.msg.records }}"
       when: item.eligibility != true or item.health != true
 
@@ -440,8 +438,7 @@
 
     - name: Fail playbook for any offline aggrs 
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails + ['All aggregates must be online'] }}"
+        health_fails: "{{ health_fails + ['All aggregates must be online'] }}"
       when: aggregate_info | selectattr('state','!=','online') | list | length >= 1
 
     - name: Verify volumes are all online
@@ -453,8 +450,7 @@
 
     - name: Fail playbook for any offline volumes 
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails + ['All volumes must be online'] }}"
+        health_fails: "{{ health_fails + ['All volumes must be online'] }}"
       when: volume_info | selectattr('state','!=','online') | list | length >= 1
 
     - name: Verify svm's are all running
@@ -466,8 +462,7 @@
 
     - name: Fail playbook for any svm's not running
       ansible.builtin.set_fact: 
-        health_fails: >
-          "{{ health_fails + ['All SVMs must be online'] }}"
+        health_fails: "{{ health_fails + ['All SVMs must be online'] }}"
       when: vserver_info | selectattr('state','!=','running') | list | length >= 1
 
     # TODO - this feels janky and I think I should be able to do this without a loop
@@ -512,8 +507,7 @@
 
       - name: Log of verify_all_lifs_home
         ansible.builtin.set_fact: 
-          health_fails: >
-            "{{ health_fails + ['All LIFs must be home'] }}"
+          health_fails: "{{ health_fails + ['All LIFs must be home'] }}"
         when: verify_all_lifs_home.msg.num_records > 0
 
       when: net_int_not_home is defined
