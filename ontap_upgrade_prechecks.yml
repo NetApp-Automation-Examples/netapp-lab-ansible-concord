@@ -109,31 +109,29 @@
       - "cluster_node_count = {{ cluster_node_count }}"
       - "san_igroups_count = {{ san_igroups_count }}"
     
-    - name: The value in CPU and Disk Util should not exceed 50%
+    - name: CPU and Disk utilization should not exceed 50% 
+        (statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3)
       netapp.ontap.na_ontap_ssh_command:
         <<: *login
-        command: statistics show-periodic -iterations 10
+        command: statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3
         privilege: adv
         accept_unknown_host_keys: true
       register: cpu_disk_check      
-
+ 
     - name: Log of cpu_disk_check
       ansible.builtin.debug: 
-        var: cpu_disk_check
+        var: cpu_disk_check['stdout']
 
-    - name: > 
-              TODO - Add warning condition for cpu_disk_check having any 
-              rows over 50% cpu / disk util
+    - name: TODO - Add warning condition for cpu_disk_check having any 
+            rows over 50% cpu / disk util
       ansible.builtin.set_fact: 
         health_warns: "{{ health_warns + ['There are CPU and disk utilizations 
-          over 50%.'] }}" 
-      # TODO - obvs 
-      when: 1 == 1
+          over 50%. See below \n\n '+cpu_disk_check['stdout']] }}" 
+      when: cpu_disk_check | regex_findall('([5-9]\\d|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
 
-    - name: > 
-              a. verify the relational database epoch and database epoch match for 
-                each node
-              b. verify the per-ring quorum master is the same for all nodes. 
+    - name: a. verify the relational database epoch and database epoch match for 
+              each node
+            b. verify the per-ring quorum master is the same for all nodes. 
                 [Each ring might have a different quorum master]
       netapp.ontap.na_ontap_rest_cli: 
         <<: *login
@@ -143,6 +141,8 @@
           fields: "node,unitname,epoch,db-epoch,db-trnxs,master,online"
         verb: "GET"
       loop: "{{ cluster_rings }}"
+      loop_control:
+        label: "{{ item.unitname }}"
       register: verify_cluster_ring
 
     - name: Log of verify_cluster_ring
@@ -513,15 +513,18 @@
       when: net_int_not_home is defined
 
   # TODO - finish adding rest of checks
+    - name: Show warnings, if any
+      ansible.builtin.fail: 
+        msg: "See Above Warnings"
+      when: health_warns | warning | length > 0 
+      ignore_errors: True
+      tags: 
+        - runonlyme
+
     - name: Fail playbook if any of the health checks didn't pass
       ansible.builtin.fail: 
         msg: "{{ health_fails }}"
       when: health_fails | length > 0
-
-    - name: Show warnings, if any
-      ansible.builtin.debug: 
-        var: health_warns
-      when: health_warns | length > 0
 
 # TODO - nicely summarize checks in one easy to digest snapshot
 
