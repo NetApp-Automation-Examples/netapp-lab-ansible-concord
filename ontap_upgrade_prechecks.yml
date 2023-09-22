@@ -6,8 +6,8 @@
   collections:
     - netapp.ontap
   vars:
-    health_fails: []
-    health_warns: []
+    failures: []
+    warnings: []
     cluster_rings: ['vldb','mgmt','vifmgr','bcomd','crs']
     login: &login
       hostname: "{{ ontap_hostname }}"
@@ -26,36 +26,36 @@
           state: "pending|reconstructing"
     
     - name: Log of bad disks check
+            (netapp.ontap.na_ontap_rest_info, storage/disks, container_type=broken|maintenance, state=pending|reconstructing)
       ansible.builtin.debug:
         var: ontap_rest_info['storage/disks']
 
-    - name: Fail playbook for any bad disks present
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['There are broken disks.'] }}" 
+    - name: Fail playbook if any non-healthy disks
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["There are bad disks.", "{{ ontap_rest_info['storage/disks']['records'] }}"]
       when: ontap_rest_info['storage/disks']['num_records'] > 0 
-        
-    - name: >
-            Basic health check pt 1
-            (health alert show)
+    
+    - name: Check for any critical health alerts 
       netapp.ontap.na_ontap_rest_cli: 
         <<: *login
         command: 'system/health/alert'
         verb: "GET"
       register: verify_health_alerts
         
-    - name: Log of verify_health_alerts
+    - name: Log of verify_health_alerts 
+            (health alert show)
       ansible.builtin.debug: 
         var: verify_health_alerts
 
-    - name: Fail playbook if there are health alerts
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['There are health alerts that need to 
-          be addressed.'] }}" 
+    - name: Fail playbook if there are critical health alerts
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["There are health alerts that need to 
+          be addressed.", "{{ verify_health_alerts.msg.records }}"]
       when: verify_health_alerts.msg.num_records > 0
 
-    - name: >
-            Basic health check pt 2
-            (health subsystem show)
+    - name: Check subsystem health
       netapp.ontap.na_ontap_rest_cli: 
         <<: *login
         command: 'system/health/subsystem'
@@ -64,14 +64,16 @@
         verb: "GET"
       register: verify_health_subsystems
 
-    - name: Log of verify_health_subsystems
+    - name: Log of verify_health_subsystems 
+            (health subsystem show)
       ansible.builtin.debug: 
         var: verify_health_subsystems
 
     - name: Fail playbook if there are subsystems degraded 
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['There are degraded subsystems that 
-          need to be addressed.'] }}" 
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["There are degraded subsystems that 
+          need to be addressed.", "{{ verify_health_subsystems.msg.records }}"]
       when: verify_health_subsystems.msg.records|selectattr('health','!=','ok')|list|length > 0
 
     - block: 
@@ -122,11 +124,11 @@
       ansible.builtin.debug: 
         var: cpu_disk_check['stdout']
 
-    - name: TODO - Add warning condition for cpu_disk_check having any 
-            rows over 50% cpu / disk util
-      ansible.builtin.set_fact: 
-        health_warns: "{{ health_warns + ['There are CPU and disk utilizations 
-          over 50%. See below \n\n '+cpu_disk_check['stdout']] }}" 
+    - name: Add warning cpu_disk_check having anything over 50% in the stdout
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        warning: ["There are CPU and disk utilizations over 50%.", 
+                  "{{ cpu_disk_check['stdout'] }}"]
       when: cpu_disk_check | regex_findall('([5-9]\\d|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
 
     - name: a. verify the relational database epoch and database epoch match for 
@@ -142,19 +144,26 @@
         verb: "GET"
       loop: "{{ cluster_rings }}"
       loop_control:
-        label: "{{ item.unitname }}"
+        label: "{{ item }}"
       register: verify_cluster_ring
+      tags: 
+        - onlyrunme
 
     - name: Log of verify_cluster_ring
       ansible.builtin.debug: 
         var: verify_cluster_ring
+      tags: 
+        - onlyrunme
 
     - name: TODO - add fail condition for epochs not matching
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['The database epochs do not match 
-          for each node.'] }}" 
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["The database epochs do not match for each node.", 
+                  "{{ verify_cluster_ring.msg.records }}"]
       # TODO - obvs 
       when: 1 == 1
+      tags: 
+        - onlyrunme
 
     - name: timestamps
       ansible.builtin.debug:
