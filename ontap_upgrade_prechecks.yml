@@ -17,6 +17,34 @@
       validate_certs: "{{ validate_certs }}"
 
   tasks:
+    - block: 
+      - name: Get cluster, node, aggr, vol, svm, network interfaces, port and SAN info
+        include_tasks: tasks/ontap_get_cluster_info_rest.yml
+        vars: 
+          gather_subset: 
+            - cluster
+            - cluster/nodes
+            - protocols/san/igroups
+            - aggregate_info
+            - volume_info
+            - vserver_info
+            - network/ip/interfaces
+          parameters:
+            fields: ['*']
+
+      - name: Set various cluster info facts
+        ansible.builtin.set_fact: 
+          cluster_info: "{{ ontap_rest_info['cluster'] }}"
+          cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
+          cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+          san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
+          aggregate_info: "{{ ontap_rest_info['storage/aggregates']['records'] }}"
+          volume_info: "{{ ontap_rest_info['storage/volumes']['records'] }}"
+          vserver_info: "{{ ontap_rest_info['svm/svms']['records'] }}"
+          net_int: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
+      tags: 
+      - onlyrunme
+
     - name: Check for bad disks
       include_tasks: tasks/ontap_get_cluster_info_rest.yml
       vars: 
@@ -76,34 +104,6 @@
           need to be addressed.", "{{ verify_health_subsystems.msg.records }}"]
       when: verify_health_subsystems.msg.records|selectattr('health','!=','ok')|list|length > 0
 
-    - block: 
-      - name: Get cluster, node, aggr, vol, svm, network interfaces, and SAN info
-        include_tasks: tasks/ontap_get_cluster_info_rest.yml
-        vars: 
-          gather_subset: 
-            - cluster
-            - cluster/nodes
-            - protocols/san/igroups
-            - aggregate_info
-            - volume_info
-            - vserver_info
-            - network/ip/interfaces
-          parameters:
-            fields: ['*']
-
-      - name: Set various cluster info facts
-        ansible.builtin.set_fact: 
-          cluster_info: "{{ ontap_rest_info['cluster'] }}"
-          cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
-          cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
-          san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
-          aggregate_info: "{{ ontap_rest_info['storage/aggregates']['records'] }}"
-          volume_info: "{{ ontap_rest_info['storage/volumes']['records'] }}"
-          vserver_info: "{{ ontap_rest_info['svm/svms']['records'] }}"
-          net_int: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
-      tags: 
-      - onlyrunme
-
     - name: Log of cluster node count and igroup count 
       ansible.builtin.debug:
         msg: "{{ item }}"
@@ -143,14 +143,10 @@
       loop_control:
         label: "{{ item }}"
       register: verify_cluster_rings
-      tags: 
-        - onlyrunme
 
     - name: Log of verify_cluster_rings
       ansible.builtin.debug: 
         var: verify_cluster_rings
-      tags: 
-        - onlyrunme
       
     # to a.) verify the per-ring relational database epoch and database epoch match for 
             #   each node
@@ -169,8 +165,6 @@
       when: item.msg.records | map(attribute='epoch') | unique | length > 1 
             or item.msg.records | map(attribute='db_epoch') | unique | length > 1
             or item.msg.records | map(attribute='master') | unique | length > 1
-      tags: 
-        - onlyrunme
 
     - block: 
       - name: > 
@@ -241,12 +235,13 @@
           var: cluster_epsilon_confirm
 
       - name: Fail playbook if epsilon is not at first node
-        ansible.builtin.set_fact: 
-          health_fails: "{{ health_fails + ['`cluster show -fields epsilon` should have 
+        include_tasks: tasks/build_summary.yml
+        vars: 
+          failure: ["`cluster show -fields epsilon` should have 
             {{ cluster_epsilon_confirm.msg.records.0.node }} as epsilon, 
             but currently 
             {{ (cluster_epsilon.msg.records |selectattr('epsilon','true')|list)[0]['node'] }}
-            is set as epsilon'] }}" 
+            is set as epsilon"]
         when: cluster_epsilon_confirm.msg.records.0.epsilon != true
 
       when: cluster_node_count|int > 2
@@ -293,11 +288,10 @@
           var: verify_fcp
 
       - name: Verify SAN host configuration before proceeding
-        ansible.builtin.set_fact: 
-          health_warns: >
-            "{{ health_warns + ['Verify SAN configuration. Validate server side 
-            is set for redundancy.'] }}"
-
+        include_tasks: tasks/build_summary.yml
+        vars: 
+          warning: ["Verify SAN configuration. Validate server side 
+            is set for redundancy."]
       when: san_igroups_count | int > 0
 
     - name: For two node clusters, ensure HA is enabled 
@@ -320,10 +314,10 @@
         var: verify_snapmirror_dp_destinations
 
     - name: Warn about DP SnapMirror upgrade order
-      ansible.builtin.set_fact: 
-        health_warns: >
-          "{{ health_warns + ['**Destination cluster must be upgraded prior 
-          to upgrading source cluster for DP SnampMirrors**'] }}"
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        warning: ["**Destination cluster must be upgraded prior 
+          to upgrading source cluster for DP SnampMirrors**"]
       when: verify_snapmirror_dp_destinations.msg.num_records > 0
 
     - name: Get Snapshot copies 
@@ -338,9 +332,9 @@
         var: verify_snapshot_count
 
     - name: Warn about DP SnapMirror upgrade order
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['Each node must not exceed 20,000 
-          snapshot copies'] }}"
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["Each node must not exceed 20,000 snapshot copies"]
       when: verify_snapshot_count.msg.num_records > 20000
 
     # Haven't figured out the REST equivelant yet
@@ -384,9 +378,9 @@
           var: verify_large_dedupe_volumes_aggrs
 
       - name: TODO - check / fail playbook if a row with over 97% is present
-        ansible.builtin.set_fact: 
-          health_fails: "{{ health_fails + ['Aggrs containing deduplicated 
-            volumes must not exceed 97% used capacity'] }}"
+        include_tasks: tasks/build_summary.yml
+        vars: 
+          failure: ["Aggrs containing deduplicated volumes must not exceed 97% used capacity"]
         # TODO obvs 
         when: 1 == 1
 
@@ -397,9 +391,9 @@
         var: cluster_info['ntp_servers']
 
     - name: Fail playbook if there are not at least 3 NTP Servers
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['There must be at least three NTP servers 
-            per NetApp best practices'] }}"
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["There must be at least three NTP servers per NetApp best practices"]
       when: cluster_info['ntp_servers']|length < 3
 
     - name: Verify cluster date 
@@ -410,8 +404,9 @@
         label: "{{ item.name }}"
 
     - name: Fail playbook if there is any variation among node timestamps 
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['Dates and timezones must match on all nodes'] }}"
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["Dates and timezones must match on all nodes"]
       when: cluster_nodes | map(attribute='date') | list | unique | length > 1
 
     - name: Verify cluster health (cluster show)
@@ -428,9 +423,9 @@
         var: verify_cluster_health
 
     - name: Fail playbook if eligibility or health is not true 
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['Health and Eligibility must 
-          be `true` for all nodes'] }}"
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["Health and Eligibility must be `true` for all nodes"]
       loop: "{{ verify_cluster_health.msg.records }}"
       when: item.eligibility != true or item.health != true
 
@@ -442,8 +437,9 @@
         label: "{{ item.name }}"
 
     - name: Fail playbook for any offline aggrs 
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['All aggregates must be online'] }}"
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["All aggregates must be online"]
       when: aggregate_info | selectattr('state','!=','online') | list | length >= 1
 
     - name: Verify volumes are all online
@@ -454,8 +450,9 @@
         label: "{{ item.svm.name }}/{{ item.name }}"
 
     - name: Fail playbook for any offline volumes 
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['All volumes must be online'] }}"
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["All volumes must be online"]
       when: volume_info | selectattr('state','!=','online') | list | length >= 1
 
     - name: Verify svm's are all running
@@ -466,8 +463,9 @@
         label: "{{ item.name }}"
 
     - name: Fail playbook for any svm's not running
-      ansible.builtin.set_fact: 
-        health_fails: "{{ health_fails + ['All SVMs must be online'] }}"
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["All SVMs must be online"]
       when: vserver_info | selectattr('state','!=','running') | list | length >= 1
 
     # TODO - this feels janky and I think I should be able to do this without a loop
@@ -510,26 +508,49 @@
         ansible.builtin.debug: 
           var: verify_all_lifs_home
 
-      - name: Log of verify_all_lifs_home
-        ansible.builtin.set_fact: 
-          health_fails: "{{ health_fails + ['All LIFs must be home'] }}"
+      - name: Fail playbook if not all LIFs are home 
+        include_tasks: tasks/build_summary.yml
+        vars: 
+          failure: ["All LIFs must be home", "{{ verify_all_lifs_home.msg.records }}"]
         when: verify_all_lifs_home.msg.num_records > 0
 
       when: net_int_not_home is defined
+
+    - name: Check for any ethernet ports that are UP but aren't healthy    
+      netapp.ontap.na_ontap_rest_cli: 
+        <<: *login
+        command: 'network/port'
+        params: 
+          link: "up"
+          health-status: "!healthy"
+        verb: "GET"
+      register: verify_ports_healthy
+      tags: 
+        - onlyrunme
+
+    - name: Fail playbook for any unhealthy ports
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["All link=up ports must be healthy", "{{ verify_ports_healthy.msg.records }}"]
+      when: verify_ports_healthy.msg.num_records > 0
+      tags: 
+        - onlyrunme
 
   # TODO - finish adding rest of checks
     - name: Show warnings, if any
       ansible.builtin.fail: 
         msg: "See Above Warnings"
-      when: health_warns | warning | length > 0 
+      when: warnings | warning | length > 0 
       ignore_errors: True
       tags: 
-        - runonlyme
+        - onlyrunme
 
     - name: Fail playbook if any of the health checks didn't pass
       ansible.builtin.fail: 
-        msg: "{{ health_fails }}"
-      when: health_fails | length > 0
+        msg: "{{ failures }}"
+      when: failures | length > 0
+      tags: 
+        - onlyrunme
 
 # TODO - nicely summarize checks in one easy to digest snapshot
 
