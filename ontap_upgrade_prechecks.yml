@@ -8,7 +8,8 @@
   vars:
     failures: []
     warnings: []
-    cluster_rings: ['vldb','mgmt','vifmgr','bcomd','crs']
+    allowed_jobs: ["FabricPool Space Job", "SP Certificate Expiry Check"]
+    cluster_rings: ["vldb","mgmt","vifmgr","bcomd","crs"]
     login: &login
       hostname: "{{ ontap_hostname }}"
       username: "{{ ontap_username }}"
@@ -42,8 +43,6 @@
           volume_info: "{{ ontap_rest_info['storage/volumes']['records'] }}"
           vserver_info: "{{ ontap_rest_info['svm/svms']['records'] }}"
           net_int: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
-      tags: 
-      - onlyrunme
 
     - name: Check for bad disks
       include_tasks: tasks/ontap_get_cluster_info_rest.yml
@@ -524,16 +523,55 @@
           link: "up"
           health-status: "!healthy"
         verb: "GET"
-      register: verify_ports_healthy
-      tags: 
-        - onlyrunme
+      register: verify_ports_unhealthy
 
     - name: Fail playbook for any unhealthy ports
       include_tasks: tasks/build_summary.yml
       vars: 
-        failure: ["All link=up ports must be healthy", "{{ verify_ports_healthy.msg.records }}"]
-      when: verify_ports_healthy.msg.num_records > 0
+        failure: ["All link=up ports must be healthy", "{{ verify_ports_unhealthy.msg.records }}"]
+      when: verify_ports_unhealthy.msg.num_records > 0
+
+    # Check failover groups, should be at least 1 port from each node in each 
+    # failover group and the vlan tags must all be the same for each group 
+    - name: net int failover-groups show
+      netapp.ontap.na_ontap_rest_cli: 
+        <<: *login
+        command: 'network/interface/failover-groups'
+        verb: "GET"
+      register: verify_net_int_failover_groups
+
+    - name: Log of verify_net_int_failover_groups
+      ansible.builtin.debug: 
+        var: verify_net_int_failover_groups
+
+    # TODO - finish failover group / broadcast domain 
+
+    - name: Get running jobs 
+      netapp.ontap.na_ontap_rest_cli: 
+        <<: *login
+        command: 'job'
+        params: 
+          fields: "name,id,node,state,vserver"
+          state: "running"  
+        verb: "GET"
+      register: verify_running_jobs
       tags: 
+        - onlyrunme
+
+    - name: Log of verify_running_jobs
+      ansible.builtin.debug: 
+        var: verify_running_jobs
+      tags: 
+        - onlyrunme
+
+    - name: Fail playbook if any jobs are running besides {{ allowed_jobs | join(',') }}
+      include_tasks: tasks/build_summary.yml  
+      vars: 
+        failure: ["No jobs should be running", "{{ verify_running_jobs.msg.records }}"]
+      when: verify_running_jobs.msg.num_records > 0 
+              and 
+            verify_running_jobs.msg.records | map(attribute='name') | difference(allowed_jobs) | length > 0
+      tags:
         - onlyrunme
 
   # TODO - finish adding rest of checks
