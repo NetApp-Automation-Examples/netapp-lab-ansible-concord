@@ -131,6 +131,39 @@ def calculate_volume_name_with_increment(volume_name, volume_info, increment=1):
 
     return(volume_name+str(increments[0]+int(increment))) 
 
+# This is not sophisticated, may refactor if performance is an issue
+def return_invalid_failover_groups(failover_groups, cluster_nodes):
+    """Given a list of failover groups, only return ones that do not have at least 
+    one port with all nodes of the cluster, and/or have any vlan tags that are not
+    matching
+    """
+    invalid_failover_groups = []
+    for group in failover_groups:
+        # Get list of failover targets
+        targets = group['targets']
+
+        # Initialize an empty dictionary to store the mapping of ports to nodes
+        port_node_dict = {}
+
+        # Iterate through each target in the targets list
+        for target in targets:
+            node, port = target.split(':')  # Split the target into node and port
+            if port in port_node_dict:
+                port_node_dict[port].append(node)  # Add the node to the list of nodes for this port
+            else:
+                port_node_dict[port] = [node]  # Create a new list for this port if it doesn't exist
+        
+        # Iterate through each port in the port_node_dict
+        for port, nodes in port_node_dict.items():
+            # If the number of nodes in the list is not equal to the number of nodes in the cluster, then we have a problem
+            if len(nodes) != len(cluster_nodes):
+                invalid_failover_groups.append(group)
+                break
+
+        #TODO - Add check for vlan tags as well
+                
+    return invalid_failover_groups
+
 
 # Any python file you put in filter_plugins/ with this class structure 
 # will get picked up by your playbooks. You just need to map each 
@@ -146,4 +179,5 @@ class FilterModule(object):
             'ontap_filter_root_aggrs': filter_root_aggrs,
             'ontap_volume_names': build_list_of_volume_names,
             'ontap_volume_name_increment': calculate_volume_name_with_increment,
+            'ontap_find_invalid_failover_groups': return_invalid_failover_groups,
         }

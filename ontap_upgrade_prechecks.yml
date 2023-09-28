@@ -26,7 +26,8 @@
             - cluster
             - cluster/nodes
             - protocols/san/igroups
-            - aggregate_info
+            - aggregate_i
+            nfo
             - volume_info
             - vserver_info
             - network/ip/interfaces
@@ -43,7 +44,9 @@
           volume_info: "{{ ontap_rest_info['storage/volumes']['records'] }}"
           vserver_info: "{{ ontap_rest_info['svm/svms']['records'] }}"
           net_int: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
-
+      tags: 
+        - onlyrunme
+        
     - name: Check for bad disks
       include_tasks: tasks/ontap_get_cluster_info_rest.yml
       vars: 
@@ -531,21 +534,40 @@
         failure: ["All link=up ports must be healthy", "{{ verify_ports_unhealthy.msg.records }}"]
       when: verify_ports_unhealthy.msg.num_records > 0
 
-    # Check failover groups, should be at least 1 port from each node in each 
-    # failover group and the vlan tags must all be the same for each group 
-    - name: net int failover-groups show
+    - name: Get failover groups (`net int failover-groups show`)
       netapp.ontap.na_ontap_rest_cli: 
         <<: *login
         command: 'network/interface/failover-groups'
+        params: 
+          fields: "vserver,broadcast-domain,targets,failover-group"
         verb: "GET"
       register: verify_net_int_failover_groups
-
+      tags:         
+        - onlyrunme
+    
     - name: Log of verify_net_int_failover_groups
       ansible.builtin.debug: 
         var: verify_net_int_failover_groups
+      tags:         
+        - onlyrunme
 
+    - name: Fail playbook if, for each failover group, a) There isn't at least 1 port from each node 
+              b) The vlan tags do not match
+      include_tasks: tasks/build_summary.yml
+      vars: 
+        failure: ["Each failover group must have at least 1 port from each node and the vlan tags must 
+                    match", "{{ verify_net_int_failover_groups.msg.records | ontap_find_invalid_failover_groups(cluster_nodes) }}"]
+      when: verify_net_int_failover_groups.msg.records | ontap_find_invalid_failover_groups(cluster_nodes) | length > 0
+      tags:         
+        - onlyrunme
     # TODO - finish failover group / broadcast domain 
 
+    - name: Debug ontap_find_invalid_failover_groups
+      ansible.builtin.debug: 
+        var: failures
+      tags:         
+        - onlyrunme
+  
     - name: Get running jobs 
       netapp.ontap.na_ontap_rest_cli: 
         <<: *login
@@ -561,8 +583,6 @@
     - name: Log of verify_running_jobs
       ansible.builtin.debug: 
         var: verify_running_jobs
-      tags: 
-        - onlyrunme
 
     - name: Fail playbook if any jobs are running besides {{ allowed_jobs | join(',') }}
       include_tasks: tasks/build_summary.yml  
