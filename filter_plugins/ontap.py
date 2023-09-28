@@ -133,36 +133,65 @@ def calculate_volume_name_with_increment(volume_name, volume_info, increment=1):
 
 # This is not sophisticated, may refactor if performance is an issue
 def return_invalid_failover_groups(failover_groups, cluster_nodes):
-    """Given a list of failover groups, only return ones that do not have at least 
-    one port with all nodes of the cluster, and/or have any vlan tags that are not
-    matching
+    """Pass the ports from each failover group to validate_port_group() 
+    to find and return invalid failover groups
     """
     invalid_failover_groups = []
+
     for group in failover_groups:
-        # Get list of failover targets
-        targets = group['targets']
-
-        # Initialize an empty dictionary to store the mapping of ports to nodes
-        port_node_dict = {}
-
-        # Iterate through each target in the targets list
-        for target in targets:
-            node, port = target.split(':')  # Split the target into node and port
-            if port in port_node_dict:
-                port_node_dict[port].append(node)  # Add the node to the list of nodes for this port
-            else:
-                port_node_dict[port] = [node]  # Create a new list for this port if it doesn't exist
-        
-        # Iterate through each port in the port_node_dict
-        for port, nodes in port_node_dict.items():
-            # If the number of nodes in the list is not equal to the number of nodes in the cluster, then we have a problem
-            if len(nodes) != len(cluster_nodes):
-                invalid_failover_groups.append(group)
-                break
-
-        #TODO - Add check for vlan tags as well
+    
+        if validate_port_group(group['targets'], cluster_nodes) == False:
+            invalid_failover_groups.append(group)
                 
     return invalid_failover_groups
+
+# This is not sophisticated, may refactor if performance is an issue
+def return_invalid_broadcast_domains(broadcast_domains, cluster_nodes):
+    """Pass the ports from each broadcast domain to validate_port_group() 
+    to find and return invalid broadcast domains
+    """ 
+
+    invalid_broadcast_domains = []
+
+    for bd in broadcast_domains:
+    
+        if validate_port_group(bd['ports'], cluster_nodes) == False:
+            invalid_broadcast_domains.append(bd)
+                
+    return invalid_broadcast_domains
+
+def validate_port_group(ports_list, cluster_nodes):
+    """Given a list of ports, only return True if there is at least one 
+    port on every node in the cluster, and all vlan tags match"""
+
+    ports = []
+    nodes = []
+    vlans = []
+
+    # Iterate through each port in the ports list
+    for target in ports_list:
+        node, port = target.split(':')  # Split the port into node and port
+
+        # Check for vlan tags and add to list
+        vlan = port.split('-')
+        if len(vlan) > 1:
+            vlans.append(vlan[1])   
+        
+        ports.append(port)
+        nodes.append(node)   
+         
+    # No vlans is fine. One vlan is fine. 
+    # However if we have more than one vlan tag, we have a problem.
+    # We also have a problem if some ports have a vlan tag and some don't
+    unique_vlans = set(vlans)
+    if len(unique_vlans) > 1 or (len(unique_vlans) == 1 and len(vlans) != len(ports)):
+        return False   
+    
+    # If vlans are ok, make sure all nodes are reprensented
+    if len(set(nodes)) == len(cluster_nodes):
+        return True
+
+    return False
 
 
 # Any python file you put in filter_plugins/ with this class structure 
@@ -180,4 +209,6 @@ class FilterModule(object):
             'ontap_volume_names': build_list_of_volume_names,
             'ontap_volume_name_increment': calculate_volume_name_with_increment,
             'ontap_find_invalid_failover_groups': return_invalid_failover_groups,
+            'ontap_find_invalid_broadcast_domains': return_invalid_broadcast_domains,
+
         }

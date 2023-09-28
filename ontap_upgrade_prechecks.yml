@@ -26,8 +26,7 @@
             - cluster
             - cluster/nodes
             - protocols/san/igroups
-            - aggregate_i
-            nfo
+            - aggregate_info
             - volume_info
             - vserver_info
             - network/ip/interfaces
@@ -539,7 +538,7 @@
         <<: *login
         command: 'network/interface/failover-groups'
         params: 
-          fields: "vserver,broadcast-domain,targets,failover-group"
+          fields: "vserver,targets,failover-group"
         verb: "GET"
       register: verify_net_int_failover_groups
       tags:         
@@ -554,19 +553,48 @@
     - name: Fail playbook if, for each failover group, a) There isn't at least 1 port from each node 
               b) The vlan tags do not match
       include_tasks: tasks/build_summary.yml
+      args:
+        apply:
+          tags: onlyrunme
       vars: 
-        failure: ["Each failover group must have at least 1 port from each node and the vlan tags must 
+        failure: ["Each failover group must have at least 1 port from each node ({{ cluster_nodes | map(attribute='name') | join(',') }}) and the vlan tags must 
                     match", "{{ verify_net_int_failover_groups.msg.records | ontap_find_invalid_failover_groups(cluster_nodes) }}"]
       when: verify_net_int_failover_groups.msg.records | ontap_find_invalid_failover_groups(cluster_nodes) | length > 0
       tags:         
         - onlyrunme
-    # TODO - finish failover group / broadcast domain 
 
-    - name: Debug ontap_find_invalid_failover_groups
-      ansible.builtin.debug: 
-        var: failures
+    - name: Get broadcast domains (`broadcast-domain show`)  
+      netapp.ontap.na_ontap_rest_cli: 
+        <<: *login
+        command: 'network/port/broadcast-domain'
+        params: 
+          fields: "broadcast-domain,ports,mtu,ipspace,failover-groups"
+        verb: "GET"
+      register: verify_broadcast_domains
       tags:         
         - onlyrunme
+
+    - name: Log of verify_broadcast_domains
+      ansible.builtin.debug: 
+        var: verify_broadcast_domains
+      tags:         
+        - onlyrunme
+
+    - name: Fail playbook if, for each broadcast domain, a) There isn't at least 1 port from each node 
+              b) The vlan tags do not match
+      include_tasks: tasks/build_summary.yml
+      args:
+        apply:
+          tags: onlyrunme
+      vars: 
+        failure: ["Each broadcast domain must have at least 1 port from each node ({{ cluster_nodes | map(attribute='name') | join(',') }}) and the vlan tags must 
+                    match", "{{ verify_broadcast_domains.msg.records | ontap_find_invalid_broadcast_domains(cluster_nodes) }}"]
+      when: verify_broadcast_domains.msg.records | ontap_find_invalid_broadcast_domains(cluster_nodes) | length > 0
+      tags:         
+        - onlyrunme
+    
+
+    # TODO - finish failover group / broadcast domain 
   
     - name: Get running jobs 
       netapp.ontap.na_ontap_rest_cli: 
@@ -577,8 +605,6 @@
           state: "running"  
         verb: "GET"
       register: verify_running_jobs
-      tags: 
-        - onlyrunme
 
     - name: Log of verify_running_jobs
       ansible.builtin.debug: 
@@ -591,8 +617,6 @@
       when: verify_running_jobs.msg.num_records > 0 
               and 
             verify_running_jobs.msg.records | map(attribute='name') | difference(allowed_jobs) | length > 0
-      tags:
-        - onlyrunme
 
   # TODO - finish adding rest of checks
     - name: Show warnings, if any
