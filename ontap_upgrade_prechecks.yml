@@ -517,21 +517,41 @@
 
       when: net_int_not_home is defined
 
-    - name: Check for any ethernet ports that are UP but aren't healthy    
+    - name: Get ethernet ports that are UP    
       netapp.ontap.na_ontap_rest_cli: 
         <<: *login
         command: 'network/port'
         params: 
           link: "up"
-          health-status: "!healthy"
+          fields: "node,mtu,ifgrp-port,health-status,link,broadcast-domain,type"
         verb: "GET"
-      register: verify_ports_unhealthy
+      register: verify_ports
+      tags: 
+        - onlyrunme
 
-    - name: Fail playbook for any unhealthy ports
+    - name: Log of verify_ports
+      ansible.builtin.debug: 
+        var: verify_ports
+      tags:
+        - onlyrunme
+
+    - name: Find any unhealthy ports and/or ports without a broadcast domain
+      ansible.builtin.set_fact: 
+        verify_ports_unhealthy: "{{ verify_ports.msg.records | selectattr('broadcast_domain', 'undefined') or 
+                                    selectattr('health_status','!=','healthy') | list }}"
+      tags: 
+        - onlyrunme
+
+    - name: Fail playbook for any unhealthy ports and/or ports without a broadcast domain
       include_tasks: tasks/build_summary.yml
+      args:
+        apply:
+          tags: onlyrunme
       vars: 
-        failure: ["All link=up ports must be healthy", "{{ verify_ports_unhealthy.msg.records }}"]
-      when: verify_ports_unhealthy.msg.num_records > 0
+        failure: ["All link=UP ports must be healthy and be in a broadcast domain", "{{ verify_ports_unhealthy }}"] 
+      when: verify_ports_unhealthy is defined 
+      tags: 
+        - onlyrunme
 
     - name: Get failover groups (`net int failover-groups show`)
       netapp.ontap.na_ontap_rest_cli: 
@@ -540,28 +560,26 @@
         params: 
           fields: "vserver,targets,failover-group"
         verb: "GET"
-      register: verify_net_int_failover_groups
-      tags:         
-        - onlyrunme
+      register: verify_failover_groups
     
-    - name: Log of verify_net_int_failover_groups
+    - name: Log of verify_failover_groups
       ansible.builtin.debug: 
-        var: verify_net_int_failover_groups
-      tags:         
-        - onlyrunme
+        var: verify_failover_groups
+
+    - name: Find any invalid failover groups domains
+      ansible.builtin.set_fact: 
+        invalid_failover_groups: "{{ verify_failover_groups.msg.records | ontap_find_invalid_failover_groups(cluster_nodes) }}"
 
     - name: Fail playbook if, for each failover group, a) There isn't at least 1 port from each node 
               b) The vlan tags do not match
       include_tasks: tasks/build_summary.yml
-      args:
-        apply:
-          tags: onlyrunme
+      # args:
+      #   apply:
+      #     tags: onlyrunme
       vars: 
         failure: ["Each failover group must have at least 1 port from each node ({{ cluster_nodes | map(attribute='name') | join(',') }}) and the vlan tags must 
-                    match", "{{ verify_net_int_failover_groups.msg.records | ontap_find_invalid_failover_groups(cluster_nodes) }}"]
-      when: verify_net_int_failover_groups.msg.records | ontap_find_invalid_failover_groups(cluster_nodes) | length > 0
-      tags:         
-        - onlyrunme
+                    match", "{{ invalid_failover_groups }}"]
+      when: invalid_failover_groups | length > 0
 
     - name: Get broadcast domains (`broadcast-domain show`)  
       netapp.ontap.na_ontap_rest_cli: 
@@ -571,31 +589,26 @@
           fields: "broadcast-domain,ports,mtu,ipspace,failover-groups"
         verb: "GET"
       register: verify_broadcast_domains
-      tags:         
-        - onlyrunme
 
     - name: Log of verify_broadcast_domains
       ansible.builtin.debug: 
         var: verify_broadcast_domains
-      tags:         
-        - onlyrunme
+
+    - name: Find any invalid broadcast domains
+      ansible.builtin.set_fact: 
+        invalid_broadcast_domains: "{{ verify_broadcast_domains.msg.records | ontap_find_invalid_broadcast_domains(cluster_nodes) }}"
 
     - name: Fail playbook if, for each broadcast domain, a) There isn't at least 1 port from each node 
               b) The vlan tags do not match
       include_tasks: tasks/build_summary.yml
-      args:
-        apply:
-          tags: onlyrunme
+      # args:
+      #   apply:
+      #     tags: onlyrunme
       vars: 
         failure: ["Each broadcast domain must have at least 1 port from each node ({{ cluster_nodes | map(attribute='name') | join(',') }}) and the vlan tags must 
-                    match", "{{ verify_broadcast_domains.msg.records | ontap_find_invalid_broadcast_domains(cluster_nodes) }}"]
-      when: verify_broadcast_domains.msg.records | ontap_find_invalid_broadcast_domains(cluster_nodes) | length > 0
-      tags:         
-        - onlyrunme
-    
-
-    # TODO - finish failover group / broadcast domain 
-  
+                    match", "{{ invalid_broadcast_domains }}"]
+      when: invalid_broadcast_domains | length > 0
+      
     - name: Get running jobs 
       netapp.ontap.na_ontap_rest_cli: 
         <<: *login
@@ -617,6 +630,40 @@
       when: verify_running_jobs.msg.num_records > 0 
               and 
             verify_running_jobs.msg.records | map(attribute='name') | difference(allowed_jobs) | length > 0
+    
+    - name: Verify failover status (`storage failover show`)  
+      netapp.ontap.na_ontap_rest_cli: 
+        <<: *login
+        command: 'storage/failover'
+        params: 
+          fields: "node,partner-name,enabled,possible,state-description"
+        verb: "GET"
+      register: verify_failover_status
+      tags:        
+        - onlyrunme
+
+    - name: Log of verify_failover_status
+      ansible.builtin.debug: 
+        var: verify_failover_status
+      tags:        
+        - onlyrunme
+
+    - name: Get any nodes where failover isn't possible
+      ansible.builtin.set_fact: 
+        failover_not_possible: "{{ verify_failover_status.msg.records | selectattr('possible','false') | list }}"
+      tags: 
+        - onlyrunme
+
+    - name: Fail playbook if there are nodes where failover isn't possible
+      include_tasks: tasks/build_summary.yml
+      args:
+        apply:
+          tags: onlyrunme
+      vars: 
+        failure: ["Failover should be possible on all nodes", "{{ failover_not_possible }}"]
+      when: failover_not_possible | length > 0
+      tags:        
+        - onlyrunme
 
   # TODO - finish adding rest of checks
     - name: Show warnings, if any
