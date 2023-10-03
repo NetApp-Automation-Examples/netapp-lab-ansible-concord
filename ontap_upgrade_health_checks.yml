@@ -627,7 +627,7 @@
 
       - name: Find any unhealthy ports and/or ports without a broadcast domain
         ansible.builtin.set_fact: 
-          verify_ports_unhealthy: "{{ verify_ports.msg.records | selectattr('broadcast_domain', 'undefined') or 
+          verify_ports_unhealthy: "{{ verify_ports.msg.records | selectattr('broadcast_domain', 'undefined') | 
                                       selectattr('health_status','!=','healthy') | list }}"
 
       - name: Fail playbook for any unhealthy ports and/or ports without a broadcast domain
@@ -749,23 +749,19 @@
           verb: "GET"
         register: verify_uptime
 
-      - name: Show uptime
-        ansible.builtin.debug: 
-          var: verify_uptime
-
       - name: Get current ONTAP Version
         netapp.ontap.na_ontap_rest_cli: 
           <<: *login
           command: 'system/image'
           params: 
-            is_current: "true"
-            fields: "node,version"
+            iscurrent: "true"
+            fields: "image,node,version"
           verb: "GET"
         register: verify_ontap_version
 
-      - name: Show current ONTAP Version
+      - name: Show uptime and current ONTAP Version
         ansible.builtin.debug: 
-          var: verify_ontap_version
+          var: verify_ontap_version.msg.records | community.general.lists_mergeby(verify_uptime.msg.records, 'node')
 
       - name: Show warnings, if any
         ansible.builtin.fail: 
