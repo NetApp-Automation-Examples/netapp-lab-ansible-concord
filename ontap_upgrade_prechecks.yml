@@ -18,12 +18,11 @@
       validate_certs: "{{ validate_certs }}"
 
   tasks:
-    - block: 
+    - name: Get basic info needed and set variables (`netapp.ontap.na_ontap_rest_info`)
+      block: 
+      
       - name: Get cluster, node, aggr, vol, svm, network interfaces, port and SAN info
         include_tasks: tasks/ontap_get_cluster_info_rest.yml
-        args:
-          apply:
-            tags: onlyrunme
         vars: 
           gather_subset: 
             - cluster
@@ -35,10 +34,8 @@
             - network/ip/interfaces
           parameters:
             fields: ['*']
-        tags:
-          - onlyrunme
 
-      - name: Set various cluster info facts
+      - name: Set needed variables
         ansible.builtin.set_fact: 
           cluster_info: "{{ ontap_rest_info['cluster'] }}"
           cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
@@ -48,106 +45,134 @@
           volume_info: "{{ ontap_rest_info['storage/volumes']['records'] }}"
           vserver_info: "{{ ontap_rest_info['svm/svms']['records'] }}"
           net_int: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
-      tags: 
-        - onlyrunme
-            
-    - name: Check for any critical health alerts 
-      netapp.ontap.na_ontap_rest_cli: 
-        <<: *login
-        command: 'system/health/alert'
-        verb: "GET"
-      register: verify_health_alerts
-        
-    - name: Log of verify_health_alerts (`health alert show`)
-      ansible.builtin.debug: 
-        var: verify_health_alerts
 
-    - name: Fail playbook if there are critical health alerts
-      include_tasks: tasks/build_summary.yml
-      vars: 
-        failure: ["There are health alerts that need to 
-          be addressed.", "{{ verify_health_alerts.msg.records }}"]
-      when: verify_health_alerts.msg.num_records > 0
+      - name: Log of cluster node count and igroup count 
+        ansible.builtin.debug:
+          msg: "{{ item }}"
+        loop:
+        - "cluster_node_count = {{ cluster_node_count }}"
+        - "san_igroups_count = {{ san_igroups_count }}"
 
-    - name: Check subsystem health
-      netapp.ontap.na_ontap_rest_cli: 
-        <<: *login
-        command: 'system/health/subsystem'
-        params: 
-          fields: "health"
-        verb: "GET"
-      register: verify_health_subsystems
+      tags: ["always"]
 
-    - name: Log of verify_health_subsystems (`health subsystem show`)
-      ansible.builtin.debug: 
-        var: verify_health_subsystems
+    - name: Check critical health alerts and subsystem health  
+      block: 
 
-    - name: Fail playbook if there are subsystems degraded 
-      include_tasks: tasks/build_summary.yml
-      vars: 
-        failure: ["There are degraded subsystems that 
-          need to be addressed.", "{{ verify_health_subsystems.msg.records }}"]
-      when: verify_health_subsystems.msg.records|selectattr('health','!=','ok')|list|length > 0
+      - name: Check for any critical health alerts 
+        netapp.ontap.na_ontap_rest_cli: 
+          <<: *login
+          command: 'system/health/alert'
+          verb: "GET"
+        register: verify_health_alerts
+          
+      - name: Log of verify_health_alerts (`health alert show`)
+        ansible.builtin.debug: 
+          var: verify_health_alerts
 
-    - name: Log of cluster node count and igroup count 
-      ansible.builtin.debug:
-        msg: "{{ item }}"
-      loop:
-      - "cluster_node_count = {{ cluster_node_count }}"
-      - "san_igroups_count = {{ san_igroups_count }}"
-    
-    - name: CPU and Disk utilization should not exceed 50% 
-        (statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3)
-      netapp.ontap.na_ontap_ssh_command:
-        <<: *login
-        command: statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3
-        privilege: adv
-        accept_unknown_host_keys: true
-      register: cpu_disk_check      
- 
-    - name: Log of cpu_disk_check
-      ansible.builtin.debug: 
-        var: cpu_disk_check['stdout']
+      - name: Fail playbook if there are critical health alerts
+        include_tasks: tasks/build_summary.yml
+        args:
+          apply:
+            tags: ["health"]
+        vars: 
+          failure: ["There are health alerts that need to 
+            be addressed.", "{{ verify_health_alerts.msg.records }}"]
+        when: verify_health_alerts.msg.num_records > 0
 
-    - name: Add warning cpu_disk_check having anything over 50% in the stdout
-      include_tasks: tasks/build_summary.yml
-      vars: 
-        warning: ["There are CPU and disk utilizations over 50%.", 
-                  "{{ cpu_disk_check['stdout'] }}"]
-      when: cpu_disk_check | regex_findall('([5-9]\\d|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
+      - name: Check subsystem health
+        netapp.ontap.na_ontap_rest_cli: 
+          <<: *login
+          command: 'system/health/subsystem'
+          params: 
+            fields: "health"
+          verb: "GET"
+        register: verify_health_subsystems
 
-    - name: Get epoch/quorum master info from the cluster ring 
-      netapp.ontap.na_ontap_rest_cli: 
-        <<: *login
-        command: 'cluster/ring'
-        params: 
-          unitname: "{{ item }}"
-          fields: "node,unitname,epoch,db-epoch,db-trnxs,master,online"
-        verb: "GET"
-      loop: "{{ cluster_rings }}"
-      loop_control:
-        label: "{{ item }}"
-      register: verify_cluster_rings
+      - name: Log of verify_health_subsystems (`health subsystem show`)
+        ansible.builtin.debug: 
+          var: verify_health_subsystems
 
-    - name: Log of verify_cluster_rings
-      ansible.builtin.debug: 
-        var: verify_cluster_rings
+      - name: Fail playbook if there are subsystems degraded 
+        include_tasks: tasks/build_summary.yml
+        args:
+          apply:
+            tags: ["health"]
+        vars: 
+          failure: ["There are degraded subsystems that 
+            need to be addressed.", "{{ verify_health_subsystems.msg.records }}"]
+        when: verify_health_subsystems.msg.records|selectattr('health','!=','ok')|list|length > 0
       
-    - name: Fail playbook if  a.) the per-ring relational database epoch and database epoch do not match for 
-            each node
-            b.) the per-ring quorum master is not the same for all nodes. 
-            (Each ring might have a different quorum master)
-      include_tasks: tasks/build_summary.yml
-      vars: 
-        failure: ["The database epochs and/or quorum master do not match for each node for {{ item.item }}", "{{ item.msg.records }}"]
-      loop: "{{ verify_cluster_rings.results }}"
-      loop_control: 
-        label: "{{ item.item }}"
-      when: item.msg.records | map(attribute='epoch') | unique | length > 1 
-            or item.msg.records | map(attribute='db_epoch') | unique | length > 1
-            or item.msg.records | map(attribute='master') | unique | length > 1
+      tags: ["health"]
 
-    - block: 
+    - name: Check system utilization  
+      block: 
+    
+      - name: CPU and Disk utilization should not exceed 50% 
+          (statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3)
+        netapp.ontap.na_ontap_ssh_command:
+          <<: *login
+          command: statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3
+          privilege: adv
+          accept_unknown_host_keys: true
+        register: cpu_disk_check      
+  
+      - name: Log of cpu_disk_check
+        ansible.builtin.debug: 
+          var: cpu_disk_check.stdout
+
+      - name: Add warning cpu_disk_check having anything over 50% in the stdout
+        include_tasks: tasks/build_summary.yml
+        args:
+          apply:
+            tags: ["cpu_disk"]
+        vars: 
+          warning: ["There are CPU and disk utilizations over 50%.", 
+                    "{{ cpu_disk_check['stdout'] }}"]
+        when: cpu_disk_check | regex_findall('([5-9]\\d|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
+      
+      tags: ["cpu_disk"]
+
+    - name: Check cluster ring database epoch and quorum master
+      block: 
+
+      - name: Get epoch/quorum master info from the cluster ring 
+        netapp.ontap.na_ontap_rest_cli: 
+          <<: *login
+          command: 'cluster/ring'
+          params: 
+            unitname: "{{ item }}"
+            fields: "node,unitname,epoch,db-epoch,db-trnxs,master,online"
+          verb: "GET"
+        loop: "{{ cluster_rings }}"
+        loop_control:
+          label: "{{ item }}"
+        register: verify_cluster_rings
+
+      - name: Log of verify_cluster_rings
+        ansible.builtin.debug: 
+          var: verify_cluster_rings
+        
+      - name: Fail playbook if  a.) the per-ring relational database epoch and database epoch do not match for 
+              each node
+              b.) the per-ring quorum master is not the same for all nodes. 
+              (Each ring might have a different quorum master)
+        include_tasks: tasks/build_summary.yml
+        args: 
+          apply:
+            tags: ["cluster_rings"]
+        vars: 
+          failure: ["The database epochs and/or quorum master do not match for each node for {{ item.item }}", "{{ item.msg.records }}"]
+        loop: "{{ verify_cluster_rings.results }}"
+        loop_control: 
+          label: "{{ item.item }}"
+        when: item.msg.records | map(attribute='epoch') | unique | length > 1 
+              or item.msg.records | map(attribute='db_epoch') | unique | length > 1
+              or item.msg.records | map(attribute='master') | unique | length > 1
+
+      tags: ["cluster_rings"]
+    
+    - name: Make sure cluster epsilon is at first node 
+      block: 
       - name: For larger clusters, find epsilon (`cluster show -fields epsilon`)
         netapp.ontap.na_ontap_rest_cli: 
           <<: *login
@@ -179,22 +204,22 @@
         # Catch edge case where epsilon is not true for any node
         when: first_node.epsilon == false and epsilon_node is defined 
 
-      # - name: Set epsilon to true on first node (`cluster modify -node <firstnode> -epsilon true`)     
-      #   netapp.ontap.na_ontap_rest_cli: 
-      #     <<: *login
-      #     command: 'cluster'
-      #     body: 
-      #       epsilon: true 
-      #     params: 
-      #       node: "{{ first_node.node }}"
-      #     verb: "PATCH"
-      #   register: move_cluster_epsilon
-      #   when: first_node.epsilon == false
+      - name: Set epsilon to true on first node (`cluster modify -node <firstnode> -epsilon true`)     
+        netapp.ontap.na_ontap_rest_cli: 
+          <<: *login
+          command: 'cluster'
+          body: 
+            epsilon: true 
+          params: 
+            node: "{{ first_node.node }}"
+          verb: "PATCH"
+        register: move_cluster_epsilon
+        when: first_node.epsilon == false
 
-      # - name: Log of move_cluster_epsilon
-      #   ansible.builtin.debug: 
-      #     var: move_cluster_epsilon
-      #   when: first_node.epsilon == false
+      - name: Log of move_cluster_epsilon
+        ansible.builtin.debug: 
+          var: move_cluster_epsilon
+        when: first_node.epsilon == false
 
       - name: Confirm epsilon is at first node (`cluster show -fields epsilon`)
         netapp.ontap.na_ontap_rest_cli: 
@@ -211,20 +236,15 @@
 
       - name: Fail playbook if epsilon is not at first node
         include_tasks: tasks/build_summary.yml
-        args:
+        args: 
           apply:
-            tags: onlyrunme
-        vars: 
-          failure: ["`cluster show -fields epsilon` should have 
-            {{ first_node }} as epsilon, 
-            but currently 
-            {{ epsilon_node.node }}
-            is set as epsilon"]
-        when: (cluster_epsilon_confirm.msg.records | first).epsilon == false
-
+            tags: ["epsilon"]
+        vars:
+          failure: ["{{ first_node.node }} should be epsilon, but currently {{ epsilon_node.node | default('no node') }} is set as epsilon"]
+        when: cluster_epsilon_confirm.msg.records.0.epsilon == false
+      
       when: cluster_node_count|int > 2
-      tags: 
-        - onlyrunme
+      tags: ["epsilon"]
     
     - block: 
 
@@ -647,19 +667,21 @@
           var: enable_ha
       when: cluster_node_count | int == 2 
 
-    - name: Show warnings, if any
-      ansible.builtin.fail: 
-        msg: "See Above Warnings"
-      when: warnings | warning | length > 0 
-      ignore_errors: True
-      tags:
-        - onlyrunme
+    - name: Summary of health checks 
+      block: 
 
-    - name: Fail playbook if any of the health checks didn't pass
-      ansible.builtin.fail: 
-        msg: "{{ failures }}"
-      when: failures | length > 0
+      - name: Show warnings, if any
+        ansible.builtin.fail: 
+          msg: "See Above Warnings"
+        when: warnings | warning | length > 0 
+        ignore_errors: True
+
+      - name: Fail playbook if any of the health checks didn't pass
+        ansible.builtin.fail: 
+          msg: "{{ failures }}"
+        when: failures | length > 0
+      
       tags:
-        - onlyrunme
+        - always
 
 
