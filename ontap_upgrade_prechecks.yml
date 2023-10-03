@@ -161,9 +161,10 @@
         ansible.builtin.debug: 
           var: cluster_epsilon
 
-      - name: Set first_node_is_epsilon fact 
+      - name: Set first_node and epsilon_node facts 
         ansible.builtin.set_fact:
-          first_node_is_epsilon: "{{ cluster_epsilon.msg.records.0.epsilon }}"
+          first_node: "{{ cluster_epsilon.msg.records | first }}"
+          epsilon_node: "{{ cluster_epsilon.msg.records |selectattr('epsilon','true') | first | default(omit) }}"
 
       - name: Set epsilon to false, if not on first node (`cluster modify -node <epsilonnode> -epsilon false`)     
         netapp.ontap.na_ontap_rest_cli: 
@@ -172,27 +173,28 @@
           body: 
             epsilon: false 
           params: 
-            node: "{{ (cluster_epsilon.msg.records |selectattr('epsilon','true')|list)[0]['node'] }}"  
+            node: "{{ epsilon_node.node }}"  
           verb: "PATCH"
         register: move_cluster_epsilon
-        when: first_node_is_epsilon == false
+        # Catch edge case where epsilon is not true for any node
+        when: first_node.epsilon == false and epsilon_node is defined 
 
-      - name: Set epsilon to true on first node (`cluster modify -node <firstnode> -epsilon true`)     
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'cluster'
-          body: 
-            epsilon: true 
-          params: 
-            node: "{{ cluster_epsilon.msg.records.0.node }}"
-          verb: "PATCH"
-        register: move_cluster_epsilon
-        when: first_node_is_epsilon == false
+      # - name: Set epsilon to true on first node (`cluster modify -node <firstnode> -epsilon true`)     
+      #   netapp.ontap.na_ontap_rest_cli: 
+      #     <<: *login
+      #     command: 'cluster'
+      #     body: 
+      #       epsilon: true 
+      #     params: 
+      #       node: "{{ first_node.node }}"
+      #     verb: "PATCH"
+      #   register: move_cluster_epsilon
+      #   when: first_node.epsilon == false
 
-      - name: Log of move_cluster_epsilon
-        ansible.builtin.debug: 
-          var: move_cluster_epsilon
-        when: first_node_is_epsilon == false
+      # - name: Log of move_cluster_epsilon
+      #   ansible.builtin.debug: 
+      #     var: move_cluster_epsilon
+      #   when: first_node.epsilon == false
 
       - name: Confirm epsilon is at first node (`cluster show -fields epsilon`)
         netapp.ontap.na_ontap_rest_cli: 
@@ -209,15 +211,20 @@
 
       - name: Fail playbook if epsilon is not at first node
         include_tasks: tasks/build_summary.yml
+        args:
+          apply:
+            tags: onlyrunme
         vars: 
           failure: ["`cluster show -fields epsilon` should have 
-            {{ cluster_epsilon_confirm.msg.records.0.node }} as epsilon, 
+            {{ first_node }} as epsilon, 
             but currently 
-            {{ (cluster_epsilon.msg.records |selectattr('epsilon','true')|list)[0]['node'] }}
+            {{ epsilon_node.node }}
             is set as epsilon"]
-        when: cluster_epsilon_confirm.msg.records.0.epsilon != true
+        when: (cluster_epsilon_confirm.msg.records | first).epsilon == false
 
       when: cluster_node_count|int > 2
+      tags: 
+        - onlyrunme
     
     - block: 
 
@@ -367,8 +374,6 @@
         when: verify_large_dedupe_volumes_aggrs['stdout'] | regex_findall('([9][7-9]|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
 
       when: verify_large_dedupe_volumes.msg.num_records > 0
-      tags:
-        - onlyrunme
     
     - name: Make sure key is set if there are no NTP servers
       ansible.builtin.set_fact: 
@@ -519,9 +524,9 @@
 
     - name: Fail playbook for any unhealthy ports and/or ports without a broadcast domain
       include_tasks: tasks/build_summary.yml
-      args:
-        apply:
-          tags: onlyrunme
+      # args:
+      #   apply:
+      #     tags: onlyrunme
       vars: 
         failure: ["All link=UP ports must be healthy and be in a broadcast domain", "{{ verify_ports_unhealthy }}"] 
       when: verify_ports_unhealthy is defined 
@@ -623,9 +628,9 @@
 
     - name: Fail playbook if there are nodes where failover isn't possible
       include_tasks: tasks/build_summary.yml
-      args:
-        apply:
-          tags: onlyrunme
+      # args:
+      #   apply:
+      #     tags: onlyrunme
       vars: 
         failure: ["Failover should be possible on all nodes", "{{ failover_not_possible }}"]
       when: failover_not_possible | length > 0
@@ -647,10 +652,14 @@
         msg: "See Above Warnings"
       when: warnings | warning | length > 0 
       ignore_errors: True
+      tags:
+        - onlyrunme
 
     - name: Fail playbook if any of the health checks didn't pass
       ansible.builtin.fail: 
         msg: "{{ failures }}"
       when: failures | length > 0
+      tags:
+        - onlyrunme
 
 
