@@ -8,7 +8,7 @@
   vars:
     failures: []
     warnings: []
-    allowed_jobs: ["FabricPool Space Job", "SP Certificate Expiry Check"]
+    allowed_jobs: ["FabricPool Space Job", "SP Certificate Expiry Check Job"]
     cluster_rings: ["vldb","mgmt","vifmgr","bcomd","crs"]
     login: &login
       hostname: "{{ ontap_hostname }}"
