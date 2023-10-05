@@ -437,19 +437,37 @@
     - name: Check for bad disks
       block:
 
-      - name: Get broken/maintenance disks with a state of pending/reconstruction
-              (netapp.ontap.na_ontap_rest_info, storage/disks, container_type=broken|maintenance, 
-              state=pending|reconstructing)
+      - name: Get broken/maintenance disks
+              (netapp.ontap.na_ontap_rest_info, storage/disks, container_type=broken|maintenance)
         include_tasks: tasks/ontap_get_cluster_info_rest.yml
         vars: 
           gather_subset: ['storage/disks']  
           parameters:
             container_type: "broken|maintenance"
-            state: "pending|reconstructing"
-      
-      - name: Log of bad disks check
+
+      - name: Set broken_disks
+        ansible.builtin.set_fact: 
+          broken_disks: "{{ ontap_rest_info['storage/disks']['records'] }}"
+
+      - name: Log of broken_disks
         ansible.builtin.debug:
-          var: ontap_rest_info['storage/disks']
+          var: broken_disks
+
+      - name: Get pending/reconstructing disks 
+              (netapp.ontap.na_ontap_rest_info, storage/disks, state=pending|reconstruction)
+        include_tasks: tasks/ontap_get_cluster_info_rest.yml
+        vars: 
+          gather_subset: ['storage/disks']  
+          parameters:
+            state: "pending|reconstruction"
+
+      - name: Set pending_disks
+        ansible.builtin.set_fact: 
+          pending_disks: "{{ ontap_rest_info['storage/disks']['records'] }}"
+
+      - name: Log of pending_disks
+        ansible.builtin.debug:
+          var: pending_disks
 
       - name: Fail playbook if any non-healthy disks
         include_tasks: tasks/build_summary.yml
@@ -457,8 +475,8 @@
           apply:
             tags: ["disks"]
         vars: 
-          failure: ["There are bad disks.", "{{ ontap_rest_info['storage/disks']['records'] }}"]
-        when: ontap_rest_info['storage/disks']['num_records'] > 0 
+          failure: ["There are broken disks and/or disks in a pending / reconstructing state.", "{{ broken_disks }}", "{{ pending_disks }}"]
+        when: broken_disks | length > 0 or pending_disks | length > 0 
 
       tags: ["disks"]
 
