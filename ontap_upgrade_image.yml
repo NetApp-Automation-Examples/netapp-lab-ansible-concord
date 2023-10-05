@@ -1,0 +1,69 @@
+---
+- name: Upgrade ONTAP image  
+  hosts: "{{ ansible_limit }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  vars_files: 
+    - http_server
+  vars:
+    ontap_image: 98P5_q_image.tgz
+    ontap_package_version: 9.8P5
+    ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
+    login: &login
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+
+  tasks:
+  - name: Check download url
+    debug: 
+      var: ontap_package_url
+    run_once: true
+  
+  - name: Check for package already being there
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: 
+        - cluster/software/packages
+      parameters: 
+        version: "{{ ontap_package_version }}"
+  
+  - name: Download {{ ontap_image }} to the cluster, if not present already
+    block: 
+
+    - name: Download {{ ontap_image }} to the cluster. This could take several minutes. 
+      netapp.ontap.na_ontap_software_update:
+        <<: *login
+        state: present
+        package_url: "{{ ontap_package_url }}"
+        package_version: "{{ ontap_package_version }}"
+        download_only: True
+      register: ontap_image_download
+      
+    - name: Check for failure 
+      ansible.builtin.fail: 
+        msg: "{{ full_url }} failed to download to the cluster. See: {{ ontap_image_download }}"
+      when: ontap_image_download.failed == true  
+
+    when: ontap_rest_info['cluster/software/packages']['records'] | length == 0
+
+  # TODO - sus out the best way to do this part, it seems to just fail the playbook
+  # When there are validation warnings, which there pretty much always will be at least one...
+  - name: Update ONTAP Software
+    netapp.ontap.na_ontap_software_update:
+      <<: *login
+      state: present
+      package_url: "{{ ontap_package_url }}"
+      package_version: "{{ ontap_package_version }}"
+      stabilize_minutes: 8
+      #ignore_validation_warning: True
+      timeout: 10800
+    register: verify_ontap_update
+
+  - name: Log of ONTAP Update
+    ansible.builtin.debug: 
+      var: verify_ontap_update
