@@ -139,17 +139,41 @@
         ansible.builtin.debug: 
           var: verify_failover_status
 
-      - name: Get any nodes where failover isn't possible
+      - name: Check for any nodes where failover isn't possible
         ansible.builtin.set_fact: 
           failover_not_possible: "{{ verify_failover_status.msg.records | selectattr('possible','false') | list }}"
 
-      - name: Fail playbook if there are nodes where failover isn't possible
-        include_tasks: tasks/build_summary.yml
-        # args:
-        #   apply:
-        #     tags: onlyrunme
-        vars: 
-          failure: ["Failover should be possible on all nodes", "{{ failover_not_possible }}"]
+      - name: Enable failover for any nodes where it's disabled 
+        block: 
+
+        - name: Log of failover_not_possible
+          ansible.builtin.debug: 
+            var: failover_not_possible
+
+        - name: Enable failvoer 
+          netapp.ontap.na_ontap_rest_cli: 
+            <<: *login
+            command: 'storage/failover'
+            body: 
+              enabled: true
+            params: 
+              node: "{{ failover_not_possible | map(attribute='node') | join(',') }}"
+            verb: "PATCH"
+          register: enable_failover
+
+        - name: Log of enable_failover
+          ansible.builtin.debug: 
+            var: enable_failover
+
+        - name: Fail playbook if failover was not enabled on all nodes
+          include_tasks: tasks/build_summary.yml
+          args:
+            apply:
+              tags: health
+          vars: 
+            failure: ["Failover was not sucessfully enabled on all nodes:", "{{ failover_not_possible }}"]
+          when: enable_failover.failed == true or enable_failover.msg.num_records != failover_not_possible | length 
+
         when: failover_not_possible | length > 0
 
       tags: ["health"]
