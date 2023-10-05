@@ -143,7 +143,7 @@
         ansible.builtin.set_fact: 
           failover_not_possible: "{{ verify_failover_status.msg.records | selectattr('possible','false') | list }}"
 
-      - name: Enable failover for any nodes where it's disabled 
+      - name: Enable failover for any nodes where it's disabled on 4+ node clusters (later, we will ensure two node clusters are in HA mode, which automatically turns on storage failover)  
         block: 
 
         - name: Log of failover_not_possible
@@ -181,7 +181,7 @@
             failure: ["Failover was not sucessfully enabled on all nodes:", "{{ failover_not_possible }}"]
           when: enable_failover.failed == true or enable_failover.msg.num_records != failover_not_possible | length 
 
-        when: failover_not_possible | length > 0
+        when: failover_not_possible | length > 0 and cluster_node_count > 2
 
       tags: ["health"]
 
