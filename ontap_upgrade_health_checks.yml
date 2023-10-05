@@ -150,16 +150,23 @@
           ansible.builtin.debug: 
             var: failover_not_possible
 
-        - name: Enable failvoer 
-          netapp.ontap.na_ontap_rest_cli: 
+        - name: Enable storage failover
+          netapp.ontap.na_ontap_storage_failover:
             <<: *login
-            command: 'storage/failover'
-            body: 
-              enabled: true
-            params: 
-              node: "{{ failover_not_possible | map(attribute='node') | join(',') }}"
-            verb: "PATCH"
+            state: present
+            node_name: "{{ failover_not_possible | map(attribute='node') | join(',') }}"
           register: enable_failover
+
+        # - name: Enable failvoer 
+        #   netapp.ontap.na_ontap_rest_cli: 
+        #     <<: *login
+        #     command: 'storage/failover'
+        #     body: 
+        #       enabled: true
+        #     params: 
+        #       node: "{{ failover_not_possible | map(attribute='node') | join(',') }}"
+        #     verb: "PATCH"
+        #   register: enable_failover
 
         - name: Log of enable_failover
           ansible.builtin.debug: 
