@@ -685,8 +685,8 @@
           apply:
             tags: ["networking"]
         vars: 
-          failure: ["All link=UP ports must be healthy and be in a broadcast domain", "{{ verify_ports_unhealthy }}"] 
-        when: verify_ports_unhealthy is defined 
+          failure: ["All up link ports must be healthy and be in a broadcast domain", "{{ verify_ports_unhealthy }}"] 
+        when: verify_ports_unhealthy | length > 0 
 
       - name: Get failover groups (`net int failover-groups show`)
         netapp.ontap.na_ontap_rest_cli: 
