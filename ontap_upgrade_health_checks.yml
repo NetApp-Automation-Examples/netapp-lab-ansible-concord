@@ -181,7 +181,7 @@
             failure: ["Failover was not sucessfully enabled on all nodes:", "{{ failover_not_possible }}"]
           when: enable_failover.failed == true or enable_failover.msg.num_records != failover_not_possible | length 
 
-        when: failover_not_possible | length > 0 and cluster_node_count > 2
+        when: failover_not_possible | length > 0 and cluster_node_count | int > 2
 
       tags: ["health"]
 
@@ -324,7 +324,7 @@
           failure: ["{{ first_node.node }} should be epsilon, but currently {{ epsilon_node.node | default('no node') }} is set as epsilon"]
         when: cluster_epsilon_confirm.msg.records.0.epsilon == false
       
-      when: cluster_node_count|int > 2
+      when: cluster_node_count | int > 2
       tags: ["epsilon"]
     
     - name: Check SAN configuration, if applicable
