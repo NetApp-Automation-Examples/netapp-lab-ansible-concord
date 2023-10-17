@@ -8,9 +8,11 @@
   vars_files: 
     - http_server
   vars:
-    ontap_image: 991P17_q_image.tgz
-    ontap_package_version: 9.9.1P17
+    ontap_image: 9101P15_q_image.tgz
+    ontap_package_version: 9.10.1P15
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
+    validation_warnings_to_ignore: 
+      - Manual checks
     login: &login
       hostname: "{{ ontap_hostname }}"
       username: "{{ ontap_username }}"
@@ -21,9 +23,23 @@
   tasks:
   - name: Check what current image(s) are there
     block: 
-    - name: Check download url
+    - name: Log of target ONTAP Package download URL and version
       debug: 
-        var: ontap_package_url
+        msg: "{{ ontap_package_version }} - {{ ontap_package_url }}"
+      run_once: true
+
+    - name: Ping download URL
+      uri: 
+        url: "{{ ontap_package_url }}"
+        method: HEAD
+        return_content: no
+      register: ontap_package_url_head
+      run_once: true
+
+    - name: Fail playbook if ontap package can't be reached 
+      ansible.builtin.fail: 
+        msg: "{{ ontap_package_url }} is not reachable. See: {{ ontap_package_url_head }}"
+      when: ontap_package_url_head.status != 200
       run_once: true
 
     - name: Check for package already being there
@@ -37,7 +53,7 @@
         parameters: 
           version: "{{ ontap_package_version }}"
     
-    - name: Debug 
+    - name: Log of current packages 
       ansible.builtin.debug: 
         var: ontap_rest_info['cluster/software/packages']['records'] 
     
@@ -64,7 +80,7 @@
         msg: "{{ full_url }} failed to download to the cluster. See: {{ ontap_image_upload }}"
       when: ontap_image_upload.failed == true  
 
-    when: ontap_rest_info['cluster/software/packages']['records'] | length == 0
+    when: ontap_package_version not in ontap_rest_info['cluster/software/packages']['records'] | map(attribute='version') | list
     tags:
       - upload
 
@@ -72,19 +88,61 @@
   # When there are validation warnings, which there pretty much always will be at least one...
   - name: Update ONTAP Software
     block: 
-      netapp.ontap.na_ontap_software_update:
+    - name: Get validation warnings to ensure there aren't any we don't expect 
+      netapp.ontap.na_ontap_restit:
         <<: *login
-        state: present
-        package_url: "{{ ontap_image }}" # reference the file already on the cluster
-        package_version: "{{ ontap_package_version }}"
-        stabilize_minutes: 8
-        #ignore_validation_warning: True
-        timeout: 10800
-      register: verify_ontap_update
-
-    - name: Log of ONTAP Update
+        api: cluster/software
+        method: PATCH
+        body: 
+          validate_only: true
+          version: "{{ ontap_package_version }}"
+      register: start_upgrade_validation
+ 
+    - name: Log of start_upgrade_validation
       ansible.builtin.debug: 
-        var: verify_ontap_update
+        var: start_upgrade_validation.response
+
+    - name: Poll job until completion (this could take several minutes)
+      netapp.ontap.na_ontap_restit:
+        <<: *login
+        api: "cluster/jobs/{{ start_upgrade_validation.response.job.uuid }}"
+        method: GET
+        query:
+          fields: "*"
+      register: upgrade_validation_job
+      until: upgrade_validation_job.reponse.state == "success"
+      retries: 50
+      delay: 15
+    
+    - name: Log of upgrade_validation_job  
+      ansible.builtin.debug: 
+        var: upgrade_validation_job
+
+    - name: Get validation results now that the job is done
+      netapp.ontap.na_ontap_restit:
+        <<: *login
+        api: cluster/software
+        method: GET
+      register: upgrade_validation_results
+
+    - name: Log of upgrade_validation_results
+      ansible.builtin.debug: 
+        var: upgrade_validation_results.response
+
+    # - name: We have validated all warnings and can proceed with the upgrade 
+    #   netapp.ontap.na_ontap_software_update:
+    #     <<: *login
+    #     state: present
+    #     package_url: "{{ ontap_image }}" # reference the file already on the cluster
+    #     package_version: "{{ ontap_package_version }}"
+    #     stabilize_minutes: 8
+    #     ignore_validation_warning: True
+    #     timeout: 10800
+    #   register: verify_ontap_update
+
+    # - name: Log of ONTAP Update
+    #   ansible.builtin.debug: 
+    #     var: verify_ontap_update
 
     tags: 
       - update 
