@@ -1,0 +1,54 @@
+---
+- name: Testing 
+  hosts: "{{ ansible_limit | default('localhost') }}"
+  gather_facts: yes
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  vars: 
+    login: &login
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+    validation_warnings: []
+    validation_warnings_to_ignore: 
+      - Manual checks
+    validation_results:
+      - action:
+          message: Refer to the Upgrade Advisor Plan or the "What should I verify before I upgrade with or without Upgrade Advisor" section in the "Upgrade ONTAP" documentation for the remaining validation checks that need to be performed before update.
+        issue:
+          message: Manual validation checks need to be performed. Refer to the Upgrade Advisor Plan or the "What should I verify before I upgrade with or without Upgrade Advisor" section in the "Upgrade ONTAP" documentation for the remaining validation checks that need to be performed before update. Failing to do so can result in an update failure or an I/O disruption.
+        status: warning
+        update_check: Manual checks
+      - action:
+          message: Hello
+        issue:
+          message: Is it me you're looking for? 
+        status: warning
+        update_check: Lionel Richie
+
+  tasks:
+    - name: Check for warnings beyond what we are expecting
+      ansible.builtin.set_fact:
+        validation_warnings: "{{ validation_warnings + [item] }}"
+      loop: "{{ validation_results }}"
+      when: item.update_check not in validation_warnings_to_ignore
+
+    - name: Log of validation warnings
+      debug:
+        msg: "{{ validation_warnings }}"
+
+    - name: Prompt for review if there are validation warnings that we don't expect
+      ansible.builtin.pause:
+        prompt: "Please review the results of cluster upgrade validation and press 
+                  ENTER to continue with the upgrade. To abort upgrade, hit ctrl+c and then 'A':
+                  \n\n----------------------------------------------\n\n
+                  {% for warning in validation_warnings %}
+                    {{ warning.status }}: \n{{ warning.issue.message }}\n\n
+                    {{ warning.action.message }}
+                    \n\n----------------------------------------------\n\n
+
+                  {% endfor %}"
+      when: validation_warnings | length > 0

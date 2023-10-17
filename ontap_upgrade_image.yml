@@ -11,6 +11,7 @@
     ontap_image: 9101P15_q_image.tgz
     ontap_package_version: 9.10.1P15
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
+    validation_warnings: []
     validation_warnings_to_ignore: 
       - Manual checks
     login: &login
@@ -84,9 +85,7 @@
     tags:
       - upload
 
-  # TODO - sus out the best way to do this part, it seems to just fail the playbook
-  # When there are validation warnings, which there pretty much always will be at least one...
-  - name: Update ONTAP Software
+  - name: "Upgrade ONTAP Software to {{ ontap_package_version }}"
     block: 
     - name: Get validation warnings to ensure there aren't any we don't expect 
       netapp.ontap.na_ontap_restit:
@@ -100,49 +99,60 @@
  
     - name: Log of start_upgrade_validation
       ansible.builtin.debug: 
-        var: start_upgrade_validation.response
+        var: start_upgrade_validation
 
-    - name: Poll job until completion (this could take several minutes)
-      netapp.ontap.na_ontap_restit:
-        <<: *login
-        api: "cluster/jobs/{{ start_upgrade_validation.response.job.uuid }}"
-        method: GET
-        query:
-          fields: "*"
-      register: upgrade_validation_job
-      until: upgrade_validation_job.reponse.state == "success"
-      retries: 50
-      delay: 15
-    
-    - name: Log of upgrade_validation_job  
-      ansible.builtin.debug: 
-        var: upgrade_validation_job
-
-    - name: Get validation results now that the job is done
+    - name: Get validation results once they are finished
       netapp.ontap.na_ontap_restit:
         <<: *login
         api: cluster/software
         method: GET
       register: upgrade_validation_results
+      until: upgrade_validation_results.response.validation_results is defined
+      retries: 100
+      delay: 10
 
     - name: Log of upgrade_validation_results
       ansible.builtin.debug: 
-        var: upgrade_validation_results.response
+        var: upgrade_validation_results
 
-    # - name: We have validated all warnings and can proceed with the upgrade 
-    #   netapp.ontap.na_ontap_software_update:
-    #     <<: *login
-    #     state: present
-    #     package_url: "{{ ontap_image }}" # reference the file already on the cluster
-    #     package_version: "{{ ontap_package_version }}"
-    #     stabilize_minutes: 8
-    #     ignore_validation_warning: True
-    #     timeout: 10800
-    #   register: verify_ontap_update
+    - name: "Check for warnings beyond what we are expecting {{ validation_warnings_to_ignore | join(',') }}"
+      ansible.builtin.set_fact:
+        validation_warnings: "{{ validation_warnings + [item] }}"
+      loop: "{{ upgrade_validation_results.response.validation_results }}"
+      when: item.update_check not in validation_warnings_to_ignore
 
-    # - name: Log of ONTAP Update
-    #   ansible.builtin.debug: 
-    #     var: verify_ontap_update
+    - name: Log of validation warnings
+      debug:
+        msg: "{{ validation_warnings }}"
+
+    - name: Prompt for review if there are validation warnings that we don't expect
+      ansible.builtin.pause:
+        prompt: "Please review the results of cluster upgrade validation and press 
+                  ENTER to continue with the upgrade. To abort upgrade, hit ctrl+c and then 'A':
+                  \n\n----------------------------------------------\n\n
+                  {% for warning in validation_warnings %}
+                    {{ warning.status }}: \n{{ warning.issue.message }}\n\n
+                    {{ warning.action.message }}
+                    \n\n----------------------------------------------\n\n
+
+                  {% endfor %}"
+      when: validation_warnings | length > 0
+
+    - name: We have validated all warnings and can proceed with the ANDU upgrade (buckle up, this is going to take a while)
+      netapp.ontap.na_ontap_software_update:
+        <<: *login
+        state: present
+        package_url: "{{ ontap_image }}" # reference the file already on the cluster
+        package_version: "{{ ontap_package_version }}"
+        stabilize_minutes: 8
+        # We can safely pass this since we have already double checked the validation warnings 
+        ignore_validation_warning: True
+        timeout: 10800
+      register: verify_ontap_update
+
+    - name: Log of ONTAP Update
+      ansible.builtin.debug: 
+        var: verify_ontap_update
 
     tags: 
       - update 
