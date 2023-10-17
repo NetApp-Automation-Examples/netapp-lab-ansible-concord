@@ -76,11 +76,6 @@
       ansible.builtin.debug: 
         var: ontap_image_upload
 
-    - name: Check for failure 
-      ansible.builtin.fail: 
-        msg: "{{ full_url }} failed to download to the cluster. See: {{ ontap_image_upload }}"
-      when: ontap_image_upload.failed == true  
-
     when: ontap_package_version not in ontap_rest_info['cluster/software/packages']['records'] | map(attribute='version') | list
     tags:
       - upload
