@@ -6,8 +6,9 @@
   collections:
     - netapp.ontap
   vars:
-    failures: []
-    warnings: []
+    summary_failures: []
+    summary_warnings: []
+    summary_logs: []
     allowed_jobs: ["FabricPool Space Job", "SP Certificate Expiry Check Job"]
     cluster_rings: ["vldb","mgmt","vifmgr","bcomd","crs"]
     login: &login
@@ -47,11 +48,12 @@
           net_int: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
 
       - name: Log of cluster node count and igroup count 
-        ansible.builtin.debug:
-          msg: "{{ item }}"
-        loop:
-        - "cluster_node_count = {{ cluster_node_count }}"
-        - "san_igroups_count = {{ san_igroups_count }}"
+        include_tasks: tasks/add_log.yml
+        args:
+          apply:
+            tags: ["health"]
+        vars: 
+          log: ["cluster_node_count = {{ cluster_node_count }}", "san_igroups_count = {{ san_igroups_count }}"]
 
       tags: ["always"]
 
@@ -65,12 +67,16 @@
           verb: "GET"
         register: verify_health_alerts
           
-      - name: Log of verify_health_alerts (`health alert show`)
-        ansible.builtin.debug: 
-          var: verify_health_alerts
+      - name: Log of verify_health_alerts (`health alert show`) 
+        include_tasks: tasks/add_log.yml
+        args:
+          apply:
+            tags: ["health"]
+        vars: 
+          log: "{{ verify_health_alerts }}"
 
       - name: Fail playbook if there are critical health alerts
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["health"]
@@ -89,11 +95,15 @@
         register: verify_health_subsystems
 
       - name: Log of verify_health_subsystems (`health subsystem show`)
-        ansible.builtin.debug: 
-          var: verify_health_subsystems
+        include_tasks: tasks/add_log.yml
+        args:
+          apply:
+            tags: ["health"]
+        vars: 
+          log: "{{ verify_health_subsystems }}"
 
       - name: Fail playbook if there are subsystems degraded 
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["health"]
@@ -112,14 +122,18 @@
         register: verify_cluster_health
 
       - name: Log of verify_cluster_health
-        ansible.builtin.debug: 
-          var: verify_cluster_health
+        include_tasks: tasks/add_log.yml
+        args:
+          apply:
+            tags: ["health"]
+        vars: 
+          log: "{{ verify_cluster_health }}"
 
       - name: Fail playbook if eligibility or health is not true 
-        include_tasks: tasks/build_summary.yml
-        # args:
-        #   apply:
-        #     tags: onlyrunme
+        include_tasks: tasks/add_failure.yml
+        args:
+          apply:
+            tags: ["health"]
         vars: 
           failure: ["Health and Eligibility must be `true` for all nodes",
                     "{{ verify_cluster_health.msg.records }}"]
@@ -136,19 +150,27 @@
         register: verify_failover_status
 
       - name: Log of verify_failover_status
-        ansible.builtin.debug: 
-          var: verify_failover_status
+        include_tasks: tasks/add_log.yml
+        args:
+          apply:
+            tags: ["health"]
+        vars: 
+          log: "{{ verify_failover_status }}"
 
       - name: Check for any nodes where failover isn't possible
         ansible.builtin.set_fact: 
           failover_not_possible: "{{ verify_failover_status.msg.records | selectattr('possible','false') | list }}"
 
+      - name: Log of failover_not_possible
+        include_tasks: tasks/add_log.yml
+        args:
+          apply:
+            tags: ["health"]
+        vars: 
+          log: "{{ failover_not_possible }}"
+
       - name: Enable failover for any nodes where it's disabled on 4+ node clusters (later, we will ensure two node clusters are in HA mode, which automatically turns on storage failover)  
         block: 
-
-        - name: Log of failover_not_possible
-          ansible.builtin.debug: 
-            var: failover_not_possible
 
         - name: Enable storage failover
           netapp.ontap.na_ontap_storage_failover:
@@ -169,11 +191,15 @@
         #   register: enable_failover
 
         - name: Log of enable_failover
-          ansible.builtin.debug: 
-            var: enable_failover
+          include_tasks: tasks/add_log.yml
+          args:
+            apply:
+              tags: ["health"]
+          vars: 
+            log: "{{ enable_failover }}"
 
         - name: Fail playbook if failover was not enabled on all nodes
-          include_tasks: tasks/build_summary.yml
+          include_tasks: tasks/add_failure.yml
           args:
             apply:
               tags: health
@@ -321,7 +347,7 @@
           apply:
             tags: ["epsilon"]
         vars:
-          failure: ["{{ first_node.node }} should be epsilon, but currently {{ epsilon_node.node | default('no node') }} is set as epsilon"]
+          failure: "{{ first_node.node }} should be epsilon, but currently {{ epsilon_node.node | default('no node') }} is set as epsilon"
         when: cluster_epsilon_confirm.msg.records.0.epsilon == false
       
       when: cluster_node_count | int > 2
@@ -403,8 +429,8 @@
           apply:
             tags: ["dp_snapmirror"]
         vars: 
-          warning: ["**Destination cluster must be upgraded prior 
-            to upgrading source cluster for DP SnampMirrors**"]
+          warning: "**Destination cluster must be upgraded prior 
+            to upgrading source cluster for DP SnampMirrors**"
         when: verify_snapmirror_dp_destinations.msg.num_records > 0
 
       tags: ["dp_snapmirror"]
@@ -429,7 +455,7 @@
           apply:
             tags: ["snapshots"]
         vars: 
-          failure: ["Each node must not exceed 20,000 snapshot copies"]
+          failure: "Each node must not exceed 20,000 snapshot copies"
         when: verify_snapshot_count.msg.num_records > 20000
 
       tags: ["snapshots"]
@@ -809,19 +835,20 @@
         register: verify_ontap_version
 
       - name: Show uptime and current ONTAP Version
-        ansible.builtin.debug: 
-          var: verify_ontap_version.msg.records | community.general.lists_mergeby(verify_uptime.msg.records, 'node')
+        include_tasks: tasks/add_log.yml
+        vars: 
+          log: "{{ verify_ontap_version.msg.records | community.general.lists_mergeby(verify_uptime.msg.records, 'node') }}"
 
       - name: Show warnings, if any
         ansible.builtin.fail: 
           msg: "See Above Warnings"
-        when: warnings | warning | length > 0 
+        when: summary_warnings | warning | length > 0 
         ignore_errors: True
 
       - name: Fail playbook if any of the health checks didn't pass
         ansible.builtin.fail: 
-          msg: "{{ failures }}"
-        when: failures | length > 0
+          msg: "{{ summary_failures }}"
+        when: summary_failures | length > 0
       
       tags:
         - always

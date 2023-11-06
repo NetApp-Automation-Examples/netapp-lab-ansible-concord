@@ -1,9 +1,0 @@
-- name: Add message to failures list
-  ansible.builtin.set_fact: 
-    failures: "{{ failures|default([]) + [failure] }}"
-  when: failure is defined
-
-- name: Add message to warnings list
-  ansible.builtin.set_fact: 
-    warnings: "{{ warnings|default([]) + [warning] }}"
-  when: warning is defined

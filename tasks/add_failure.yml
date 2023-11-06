@@ -1,0 +1,3 @@
+- name: Add message to failures list
+  ansible.builtin.set_fact: 
+    summary_failures: "{{ summary_failures|default([]) + [failure] }}"

@@ -1,0 +1,3 @@
+- name: Add message to warnings list
+  ansible.builtin.set_fact: 
+    summary_warnings: "{{ summary_warnings|default([]) + [warning] }}"
