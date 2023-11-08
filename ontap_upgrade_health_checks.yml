@@ -228,7 +228,7 @@
           var: cpu_disk_check.stdout
 
       - name: Add warning cpu_disk_check having anything over 50% in the stdout
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_warning.yml
         args:
           apply:
             tags: ["cpu_disk"]
@@ -256,14 +256,18 @@
         register: verify_cluster_rings
 
       - name: Log of verify_cluster_rings
-        ansible.builtin.debug: 
-          var: verify_cluster_rings
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["cluster_rings"]
+        vars: 
+          log: "{{ verify_cluster_rings }}"
         
       - name: Fail playbook if  a.) the per-ring relational database epoch and database epoch do not match for 
               each node
               b.) the per-ring quorum master is not the same for all nodes. 
               (Each ring might have a different quorum master)
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args: 
           apply:
             tags: ["cluster_rings"]
@@ -290,8 +294,12 @@
         register: cluster_epsilon
 
       - name: Log of cluster_epsilon
-        ansible.builtin.debug: 
-          var: cluster_epsilon
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["epsilon"]
+        vars: 
+          log: "{{ cluster_epsilon }}"
 
       - name: Set first_node and epsilon_node facts 
         ansible.builtin.set_fact:
@@ -324,8 +332,12 @@
         when: first_node.epsilon == false
 
       - name: Log of move_cluster_epsilon
-        ansible.builtin.debug: 
-          var: move_cluster_epsilon
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["epsilon"]
+        vars: 
+          log: "{{ move_cluster_epsilon }}"
         when: first_node.epsilon == false
 
       - name: Confirm epsilon is at first node (`cluster show -fields epsilon`)
@@ -338,11 +350,15 @@
         register: cluster_epsilon_confirm
 
       - name: Log of cluster_epsilon_confirm
-        ansible.builtin.debug: 
-          var: cluster_epsilon_confirm
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["epsilon"]
+        vars: 
+          log: "{{ cluster_epsilon_confirm }}"
 
       - name: Fail playbook if epsilon is not at first node
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args: 
           apply:
             tags: ["epsilon"]
@@ -366,8 +382,12 @@
         register: verify_san_quorum
 
       - name: Log of verify_san_quorum
-        ansible.builtin.debug: 
-          var: verify_san_quorum
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["san"]
+        vars: 
+          log: "{{ verify_san_quorum }}"
 
       - name: Verify SAN (iscsi) configuration. Validate server side is set for redundancy. (`iscsi initiator show -fields igroup,initiator-name,tpgroup`)
         netapp.ontap.na_ontap_rest_cli: 
@@ -379,8 +399,12 @@
         register: verify_iscsi
 
       - name: Log of verify_iscsi
-        ansible.builtin.debug: 
-          var: verify_iscsi
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["san"]
+        vars: 
+          log: "{{ verify_iscsi }}"
 
       - name: Verify SAN (fcp) configuration. Validate server side is set for redundancy. (`fcp initiator show -fields igroup,wwpn,lif`)
         netapp.ontap.na_ontap_rest_cli: 
@@ -392,11 +416,15 @@
         register: verify_fcp
 
       - name: Log of verify_fcp
-        ansible.builtin.debug: 
-          var: verify_fcp
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["san"]
+        vars: 
+          log: "{{ verify_fcp }}"
 
       - name: Verify SAN host configuration before proceeding
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_warning.yml
         args:
           apply:
             tags: ["san"]
@@ -420,11 +448,15 @@
         register: verify_snapmirror_dp_destinations
 
       - name: Log of verify_snapmirror_dp_destinations
-        ansible.builtin.debug: 
-          var: verify_snapmirror_dp_destinations
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["dp_snapmirror"]
+        vars: 
+          log: "{{ verify_snapmirror_dp_destinations }}"
 
       - name: Warn about DP SnapMirror upgrade order
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_warning.yml
         args:
           apply:
             tags: ["dp_snapmirror"]
@@ -446,11 +478,15 @@
         register: verify_snapshot_count
 
       - name: Log of verify_snapshot_count
-        ansible.builtin.debug: 
-          var: verify_snapshot_count.msg.num_records
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["snapshots"]
+        vars: 
+          log: "{{ verify_snapshot_count.msg.num_records }}"
 
       - name: Fail playbook if there are more than 20,000 snapshot copies
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["snapshots"]
@@ -476,8 +512,12 @@
           broken_disks: "{{ ontap_rest_info['storage/disks']['records'] }}"
 
       - name: Log of broken_disks
-        ansible.builtin.debug:
-          var: broken_disks
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["disks"]
+        vars: 
+          log: "{{ broken_disks }}"
 
       - name: Get pending/reconstructing disks 
               (netapp.ontap.na_ontap_rest_info, storage/disks, state=pending|reconstruction)
@@ -492,11 +532,15 @@
           pending_disks: "{{ ontap_rest_info['storage/disks']['records'] }}"
 
       - name: Log of pending_disks
-        ansible.builtin.debug:
-          var: pending_disks
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["disks"]
+        vars: 
+          log: "{{ pending_disks }}"
 
       - name: Fail playbook if any non-healthy disks
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["disks"]
@@ -522,8 +566,12 @@
         register: verify_large_dedupe_volumes
 
       - name: Log of verify_large_dedupe_volumes
-        ansible.builtin.debug: 
-          var: verify_large_dedupe_volumes
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["dedupe_volumes"]
+        vars: 
+          log: "{{ verify_large_dedupe_volumes }}"
           
       - block: 
         - name: If verify_large_dedupe_volumes isn't empty, gather list of aggrs involved 
@@ -531,8 +579,12 @@
             large_dedupe_volumes_aggrs: "{{ verify_large_dedupe_volumes.msg.records | map('aggregate') | list }}"
           
         - name: Log of large_dedupe_volumes_aggrs
-          ansible.builtin.debug: 
-            var: large_dedupe_volumes_aggrs
+          include_tasks: tasks/add_log.yml
+          args: 
+            apply:
+              tags: ["dedupe_volumes"]
+          vars: 
+            log: "{{ large_dedupe_volumes_aggrs }}"
 
         - name: Check aggr containing deduplicated volumes (`df -A <aggr>,<aggr2>`)
           netapp.ontap.na_ontap_ssh_command:
@@ -543,11 +595,15 @@
           register: verify_large_dedupe_volumes_aggrs
 
         - name: Log of verify_large_dedupe_volumes_aggrs
-          ansible.builtin.debug: 
-            var: verify_large_dedupe_volumes_aggrs
+          include_tasks: tasks/add_log.yml
+          args: 
+            apply:
+              tags: ["dedupe_volumes"]
+          vars: 
+            log: "{{ verify_large_dedupe_volumes_aggrs }}"
 
         - name: Fail playbook if any aggregates containing dedupe volumes are over 97% 
-          include_tasks: tasks/build_summary.yml
+          include_tasks: tasks/add_failure.yml
           args:
             apply:
               tags: ["dedupe_volumes"]
@@ -567,10 +623,10 @@
         when: cluster_info.ntp_servers is undefined
   
       - name: Fail playbook if there are not at least 3 NTP Servers
-        include_tasks: tasks/build_summary.yml
-        # args:
-        #   apply:
-        #     tags: onlyrunme
+        include_tasks: tasks/add_failure.yml
+        args:
+          apply:
+            tags: ["datetime"]
         vars: 
           failure: ["There must be at least three NTP servers per NetApp best practices 
                     but there are currently {{ cluster_info.ntp_servers | length }}", 
@@ -582,7 +638,10 @@
           cluster_dates: "{{ cluster_nodes | map(attribute='date', default='') | list }}"
 
       - name: Fail playbook if there is any variation among node timestamps 
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
+        args:
+          apply:
+            tags: ["datetime"]
         vars: 
           failure: ["Dates and timezones must match on all nodes", "{{ cluster_dates }}"]
         when: cluster_dates | unique | length > 1
@@ -596,7 +655,7 @@
           offline_aggregates: "{{ aggregate_info | selectattr('state','!=','online') | list }}"
 
       - name: Fail playbook for any offline aggrs 
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["offline_objects"]
@@ -609,7 +668,7 @@
           offline_volumes: "{{ volume_info | selectattr('state','!=','online') | list }}"
 
       - name: Fail playbook for any offline volumes 
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["offline_objects"]
@@ -622,7 +681,7 @@
           offline_svms: "{{ vserver_info | selectattr('state','!=','running') | list }}"
 
       - name: Fail playbook for any svm's not running
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["offline_objects"]
@@ -646,8 +705,12 @@
 
       - block:
         - name: Log of LIFs not home
-          ansible.builtin.debug: 
-            var: net_int_not_home
+          include_tasks: tasks/add_log.yml
+          args: 
+            apply:
+              tags: ["networking"]
+          vars: 
+            log: "{{ net_int_not_home }}"
 
         - name: All LIFs should be homed prior to upgrades
           netapp.ontap.na_ontap_rest_cli:
@@ -659,8 +722,12 @@
           register: verify_net_int_revert
 
         - name: Log of verify_net_int_revert
-          ansible.builtin.debug: 
-            var: verify_net_int_revert
+          include_tasks: tasks/add_log.yml
+          args: 
+            apply:
+              tags: ["networking"]
+          vars: 
+            log: "{{ verify_net_int_revert }}"
         
         - name: Check to make sure everything got home (net int show -is-home false)
           netapp.ontap.na_ontap_rest_cli: 
@@ -672,11 +739,15 @@
           register: verify_all_lifs_home
 
         - name: Log of verify_all_lifs_home
-          ansible.builtin.debug: 
-            var: verify_all_lifs_home
+          include_tasks: tasks/add_log.yml
+          args: 
+            apply:
+              tags: ["networking"]
+          vars: 
+            log: "{{ verify_all_lifs_home }}"
 
         - name: Fail playbook if not all LIFs are home 
-          include_tasks: tasks/build_summary.yml
+          include_tasks: tasks/add_failure.yml
           args:
             apply:
               tags: ["networking"]
@@ -697,8 +768,12 @@
         register: verify_ports
 
       - name: Log of verify_ports
-        ansible.builtin.debug: 
-          var: verify_ports
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["networking"]
+        vars: 
+          log: "{{ verify_ports }}"
 
       - name: Find any unhealthy ports and/or ports without a broadcast domain
         ansible.builtin.set_fact: 
@@ -706,7 +781,7 @@
                                       selectattr('health_status','!=','healthy') | list }}"
 
       - name: Fail playbook for any unhealthy ports and/or ports without a broadcast domain
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["networking"]
@@ -724,8 +799,12 @@
         register: verify_failover_groups
       
       - name: Log of verify_failover_groups
-        ansible.builtin.debug: 
-          var: verify_failover_groups
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["networking"]
+        vars: 
+          log: "{{ verify_failover_groups }}"
 
       - name: Find any invalid failover groups domains
         ansible.builtin.set_fact: 
@@ -733,7 +812,7 @@
 
       - name: Fail playbook if, for each failover group, a) There isn't at least 1 port from each node 
                 b) The vlan tags do not match
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["networking"]
@@ -752,8 +831,12 @@
         register: verify_broadcast_domains
 
       - name: Log of verify_broadcast_domains
-        ansible.builtin.debug: 
-          var: verify_broadcast_domains
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["networking"]
+        vars: 
+          log: "{{ verify_broadcast_domains }}"
 
       - name: Find any invalid broadcast domains
         ansible.builtin.set_fact: 
@@ -761,7 +844,7 @@
 
       - name: Fail playbook if, for each broadcast domain, a) There isn't at least 1 port from each node 
                 b) The vlan tags do not match
-        include_tasks: tasks/build_summary.yml
+        include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["networking"]
@@ -785,11 +868,15 @@
         register: verify_running_jobs
       
       - name: Log of verify_running_jobs
-        ansible.builtin.debug: 
-          var: verify_running_jobs
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["jobs"]
+        vars: 
+          log: "{{ verify_running_jobs }}"
 
       - name: Fail playbook if any jobs are running besides {{ allowed_jobs | join(',') }}
-        include_tasks: tasks/build_summary.yml  
+        include_tasks: tasks/add_failure.yml  
         args:
           apply:
             tags: ["jobs"]
@@ -798,6 +885,7 @@
         when: verify_running_jobs.msg.num_records > 0 
                 and 
               verify_running_jobs.msg.records | map(attribute='name') | difference(allowed_jobs) | length > 0
+
       tags: ["jobs"]
 
     - block: 
@@ -808,8 +896,12 @@
         register: enable_ha
 
       - name: Log of enable_ha
-        ansible.builtin.debug: 
-          var: enable_ha
+        include_tasks: tasks/add_log.yml
+        args: 
+          apply:
+            tags: ["jobs"]
+        vars: 
+          log: "{{ enable_ha }}"
       when: cluster_node_count | int == 2 
 
     - name: Summary of health checks 
@@ -839,6 +931,10 @@
         vars: 
           log: "{{ verify_ontap_version.msg.records | community.general.lists_mergeby(verify_uptime.msg.records, 'node') }}"
 
+      - name: Show summary_logs
+        ansible.builtin.debug: 
+          var: summary_logs 
+          
       - name: Show warnings, if any
         ansible.builtin.fail: 
           msg: "See Above Warnings"
