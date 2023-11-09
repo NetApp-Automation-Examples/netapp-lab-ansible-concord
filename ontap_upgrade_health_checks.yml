@@ -1,5 +1,5 @@
 ---
-- name: Run Through Pre-Checks Before Upgrading ONTAP   
+- name: Run Through Health Checks Before/After Upgrading ONTAP   
   hosts: "{{ ansible_limit }}"
   gather_facts: no
   connection: 'local'
@@ -41,6 +41,7 @@
           cluster_info: "{{ ontap_rest_info['cluster'] }}"
           cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
           cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+          san_igroups: "{{ ontap_rest_info['protocols/san/igroups']['records'] }}"          
           san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
           aggregate_info: "{{ ontap_rest_info['storage/aggregates']['records'] }}"
           volume_info: "{{ ontap_rest_info['storage/volumes']['records'] }}"
@@ -49,43 +50,37 @@
 
       - name: Log of cluster node count and igroup count 
         include_tasks: tasks/add_log.yml
-        args:
-          apply:
-            tags: ["health"]
         vars: 
-          log: ["cluster_node_count = {{ cluster_node_count }}", "san_igroups_count = {{ san_igroups_count }}"]
+          log: 
+            cluster_nodes: "{{ cluster_nodes | map(attribute='name') }}"
+            cluster_node_count: "{{ cluster_node_count | int }}"
+            san_igroups_count: "{{ san_igroups_count | int }}"
+            san_igroups: "{{ san_igroups | map(attribute='name') }}"
 
       tags: ["always"]
 
     - name: Check overall health of the cluster
       block: 
 
-      - name: Check for any critical health alerts 
+      - name: Check for any critical health alerts (`health alert show`)
         netapp.ontap.na_ontap_rest_cli: 
           <<: *login
           command: 'system/health/alert'
           verb: "GET"
         register: verify_health_alerts
           
-      - name: Log of verify_health_alerts (`health alert show`) 
-        include_tasks: tasks/add_log.yml
-        args:
-          apply:
-            tags: ["health"]
-        vars: 
-          log: "{{ verify_health_alerts }}"
-
       - name: Fail playbook if there are critical health alerts
         include_tasks: tasks/add_failure.yml
         args:
           apply:
             tags: ["health"]
         vars: 
-          failure: ["There are health alerts that need to 
-            be addressed.", "{{ verify_health_alerts.msg.records }}"]
+          failure: 
+            issue: "There are critical health alerts" 
+            details: "{{ verify_health_alerts.msg.records }}"
         when: verify_health_alerts.msg.num_records > 0
 
-      - name: Check subsystem health
+      - name: Check subsystem health (`health subsystem show`)
         netapp.ontap.na_ontap_rest_cli: 
           <<: *login
           command: 'system/health/subsystem'
@@ -94,13 +89,14 @@
           verb: "GET"
         register: verify_health_subsystems
 
-      - name: Log of verify_health_subsystems (`health subsystem show`)
+      - name: Log of verify_health_subsystems
         include_tasks: tasks/add_log.yml
         args:
           apply:
             tags: ["health"]
         vars: 
-          log: "{{ verify_health_subsystems }}"
+          log: 
+            health_subsystems: "{{ verify_health_subsystems }}"
 
       - name: Fail playbook if there are subsystems degraded 
         include_tasks: tasks/add_failure.yml
@@ -108,11 +104,12 @@
           apply:
             tags: ["health"]
         vars: 
-          failure: ["There are degraded subsystems that 
-            need to be addressed.", "{{ verify_health_subsystems.msg.records }}"]
+          failure: 
+            issue: "There are subsystems that are not in a healthy state"
+            details: "{{ verify_health_subsystems.msg.records }}"
         when: verify_health_subsystems.msg.records|selectattr('health','!=','ok')|list|length > 0
 
-      - name: Verify cluster health (cluster show)
+      - name: Verify cluster health (`cluster show`)
         netapp.ontap.na_ontap_rest_cli: 
           <<: *login
           command: 'cluster'
@@ -127,7 +124,8 @@
           apply:
             tags: ["health"]
         vars: 
-          log: "{{ verify_cluster_health }}"
+          log: 
+            cluster_health: "{{ verify_cluster_health }}"
 
       - name: Fail playbook if eligibility or health is not true 
         include_tasks: tasks/add_failure.yml
@@ -135,10 +133,11 @@
           apply:
             tags: ["health"]
         vars: 
-          failure: ["Health and Eligibility must be `true` for all nodes",
-                    "{{ verify_cluster_health.msg.records }}"]
-        when: verify_cluster_health.msg.records | selectattr('eligibility','eq','false') | 
-                selectattr('health','eq', 'false') | list | length > 0
+          failure: 
+            issue: "Health and Eligibility must be `true` for all nodes"
+            details: "{{ verify_cluster_health.msg.records }}"
+      when: verify_cluster_health.msg.records | selectattr('eligibility','eq','false') | 
+              selectattr('health','eq', 'false') | list | length > 0
 
       - name: Verify failover status (`storage failover show`)  
         netapp.ontap.na_ontap_rest_cli: 
@@ -155,22 +154,24 @@
           apply:
             tags: ["health"]
         vars: 
-          log: "{{ verify_failover_status }}"
+          log: 
+            failover_status: "{{ verify_failover_status }}"
 
       - name: Check for any nodes where failover isn't possible
         ansible.builtin.set_fact: 
           failover_not_possible: "{{ verify_failover_status.msg.records | selectattr('possible','false') | list }}"
 
-      - name: Log of failover_not_possible
-        include_tasks: tasks/add_log.yml
-        args:
-          apply:
-            tags: ["health"]
-        vars: 
-          log: "{{ failover_not_possible }}"
-
       - name: Enable failover for any nodes where it's disabled on 4+ node clusters (later, we will ensure two node clusters are in HA mode, which automatically turns on storage failover)  
         block: 
+
+        - name: Log of failover_not_possible
+          include_tasks: tasks/add_log.yml
+          args:
+            apply:
+              tags: ["health"]
+          vars: 
+            log: 
+              failover_not_possible: "{{ failover_not_possible }}"
 
         - name: Enable storage failover
           netapp.ontap.na_ontap_storage_failover:
@@ -196,7 +197,8 @@
             apply:
               tags: ["health"]
           vars: 
-            log: "{{ enable_failover }}"
+            log: 
+              enable_failover: "{{ enable_failover }}"
 
         - name: Fail playbook if failover was not enabled on all nodes
           include_tasks: tasks/add_failure.yml
@@ -204,7 +206,9 @@
             apply:
               tags: health
           vars: 
-            failure: ["Failover was not sucessfully enabled on all nodes:", "{{ failover_not_possible }}"]
+            failure: 
+              issue: "Failover was not sucessfully enabled on all nodes"
+              details: "{{ failover_not_possible }}"
           when: enable_failover.failed == true or enable_failover.msg.num_records != failover_not_possible | length 
 
         when: failover_not_possible | length > 0 and cluster_node_count | int > 2
@@ -224,8 +228,13 @@
         register: cpu_disk_check      
   
       - name: Log of cpu_disk_check
-        ansible.builtin.debug: 
-          var: cpu_disk_check.stdout
+        include_tasks: tasks/add_log.yml
+        args:
+          apply:
+            tags: ["cpu_disk"]
+        vars: 
+          log: 
+            cpu_disk_check: "{{ cpu_disk_check.stdout }}"
 
       - name: Add warning cpu_disk_check having anything over 50% in the stdout
         include_tasks: tasks/add_warning.yml
@@ -233,8 +242,9 @@
           apply:
             tags: ["cpu_disk"]
         vars: 
-          warning: ["There are CPU and disk utilizations over 50%.", 
-                    "{{ cpu_disk_check['stdout'] }}"]
+          warning:
+            issue: "There are CPU and disk utilizations over 50%."
+            details: "{{ cpu_disk_check['stdout'] }}"
         when: cpu_disk_check | regex_findall('([5-9]\\d|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
       
       tags: ["cpu_disk"]
@@ -261,7 +271,8 @@
           apply:
             tags: ["cluster_rings"]
         vars: 
-          log: "{{ verify_cluster_rings }}"
+          log: 
+            verify_cluster_rings: "{{ verify_cluster_rings }}"
         
       - name: Fail playbook if  a.) the per-ring relational database epoch and database epoch do not match for 
               each node
@@ -272,7 +283,9 @@
           apply:
             tags: ["cluster_rings"]
         vars: 
-          failure: ["The database epochs and/or quorum master do not match for each node for {{ item.item }}", "{{ item.msg.records }}"]
+          failure: 
+            issue: "The database epochs and/or quorum master do not match for each node for {{ item.item }}" 
+            details: "{{ item.msg.records }}"
         loop: "{{ verify_cluster_rings.results }}"
         loop_control: 
           label: "{{ item.item }}"
