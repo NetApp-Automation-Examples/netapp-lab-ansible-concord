@@ -133,6 +133,23 @@
                   {% endfor %}"
       when: validation_warnings | length > 0
 
+    - name: Get number of nodes
+      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      vars: 
+        gather_subset: 
+          - cluster/nodes
+    
+    - name: Set maint_hours based on number of nodes
+      ansible.builtin.set_fact:
+        maint_hours: "{{ (1.5 * ontap_rest_info['cluster/nodes']['num_records'] | int) | round | int }}"
+
+      # https://kb.netapp.com/onprem/ontap/os/How_to_suppress_automatic_case_creation_during_scheduled_maintenance_windows_-_ONTAP_9
+    - name: Kick off autosupports (-type all -message "MAINT={{ maint_hours }}h Starting ANDU {{ ontap_package_version }}"
+      na_ontap_autosupport_invoke:
+        autosupport_message: "MAINT={{ maint_hours }}h Starting ANDU {{ ontap_package_version }}"
+        type: all
+        <<: *login
+
     - name: We have validated all warnings and can proceed with the ANDU upgrade (buckle up, this is going to take a while)
       netapp.ontap.na_ontap_software_update:
         <<: *login
@@ -148,6 +165,12 @@
     - name: Log of ONTAP Update
       ansible.builtin.debug: 
         var: verify_ontap_update
+
+    - name: End maintenance autosupports (-type all -message "MAINT=END Completed ANDU {{ ontap_package_version }}"
+      na_ontap_autosupport_invoke:
+        autosupport_message: "MAINT=END Completed ANDU {{ ontap_package_version }}"
+        type: all
+        <<: *login
 
     tags: 
       - update 
