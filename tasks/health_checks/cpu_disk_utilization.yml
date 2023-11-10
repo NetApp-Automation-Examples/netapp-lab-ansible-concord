@@ -1,0 +1,13 @@
+- name: Check CPU and Disk utilization  
+    (statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3)
+  netapp.ontap.na_ontap_ssh_command:
+    command: statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3
+    privilege: adv
+    accept_unknown_host_keys: true
+  register: cpu_disk_check      
+
+- name: Log of cpu_disk_check
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      cpu_disk_check: "{{ cpu_disk_check.stdout }}"

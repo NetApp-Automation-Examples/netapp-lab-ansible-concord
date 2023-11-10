@@ -5,19 +5,19 @@
   connection: 'local'
   collections:
     - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
   vars:
     summary_failures: []
     summary_warnings: []
     summary_logs: []
     allowed_jobs: ["FabricPool Space Job", "SP Certificate Expiry Check Job"]
     cluster_rings: ["vldb","mgmt","vifmgr","bcomd","crs"]
-    login: &login
-      hostname: "{{ ontap_hostname }}"
-      username: "{{ ontap_username }}"
-      password: "{{ ontap_password }}"
-      https: "{{ https }}"
-      validate_certs: "{{ validate_certs }}"
-
   tasks:
     - name: Get basic info needed and set variables (`netapp.ontap.na_ontap_rest_info`)
       block: 
@@ -62,185 +62,21 @@
     - name: Check overall health of the cluster
       block: 
 
-      - name: Check for any critical health alerts (`health alert show`)
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'system/health/alert'
-          verb: "GET"
-        register: verify_health_alerts
-          
-      - name: Fail playbook if there are critical health alerts
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["health"]
-        vars: 
-          failure: 
-            issue: "There are critical health alerts" 
-            details: "{{ verify_health_alerts.msg.records }}"
-        when: verify_health_alerts.msg.num_records > 0
+      - include_tasks: tasks/health_checks/health_alerts.yml
 
-      - name: Check subsystem health (`health subsystem show`)
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'system/health/subsystem'
-          params: 
-            fields: "health"
-          verb: "GET"
-        register: verify_health_subsystems
+      - include_tasks: tasks/health_checks/cluster_health.yml
 
-      - name: Log of verify_health_subsystems
-        include_tasks: tasks/add_log.yml
-        args:
-          apply:
-            tags: ["health"]
-        vars: 
-          log: 
-            health_subsystems: "{{ verify_health_subsystems }}"
-
-      - name: Fail playbook if there are subsystems degraded 
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["health"]
-        vars: 
-          failure: 
-            issue: "There are subsystems that are not in a healthy state"
-            details: "{{ verify_health_subsystems.msg.records }}"
-        when: verify_health_subsystems.msg.records|selectattr('health','!=','ok')|list|length > 0
-
-      - name: Verify cluster health (`cluster show`)
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'cluster'
-          params: 
-            fields: "health,eligibility"
-          verb: "GET"
-        register: verify_cluster_health
-
-      - name: Log of verify_cluster_health
-        include_tasks: tasks/add_log.yml
-        args:
-          apply:
-            tags: ["health"]
-        vars: 
-          log: 
-            cluster_health: "{{ verify_cluster_health }}"
-
-      - name: Fail playbook if eligibility or health is not true 
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["health"]
-        vars: 
-          failure: 
-            issue: "Health and Eligibility must be `true` for all nodes"
-            details: "{{ verify_cluster_health.msg.records }}"
-        when: verify_cluster_health.msg.records | selectattr('eligibility','eq','false') | 
-              selectattr('health','eq', 'false') | list | length > 0
-
-      - name: Verify failover status (`storage failover show`)  
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'storage/failover'
-          params: 
-            fields: "node,partner-name,enabled,possible,state-description"
-          verb: "GET"
-        register: verify_failover_status
-
-      - name: Log of verify_failover_status
-        include_tasks: tasks/add_log.yml
-        args:
-          apply:
-            tags: ["health"]
-        vars: 
-          log: 
-            failover_status: "{{ verify_failover_status }}"
-
-      - name: Check for any nodes where failover isn't possible
-        ansible.builtin.set_fact: 
-          failover_not_possible: "{{ verify_failover_status.msg.records | selectattr('possible','false') | list }}"
-
-      - name: Enable failover for any nodes where it's disabled on 4+ node clusters (later, we will ensure two node clusters are in HA mode, which automatically turns on storage failover)  
-        block: 
-
-        - name: Log of failover_not_possible
-          include_tasks: tasks/add_log.yml
-          args:
-            apply:
-              tags: ["health"]
-          vars: 
-            log: 
-              failover_not_possible: "{{ failover_not_possible }}"
-
-        - name: Enable storage failover
-          netapp.ontap.na_ontap_storage_failover:
-            <<: *login
-            state: present
-            node_name: "{{ failover_not_possible | map(attribute='node') | join(',') }}"
-          register: enable_failover
-
-        # - name: Enable failvoer 
-        #   netapp.ontap.na_ontap_rest_cli: 
-        #     <<: *login
-        #     command: 'storage/failover'
-        #     body: 
-        #       enabled: true
-        #     params: 
-        #       node: "{{ failover_not_possible | map(attribute='node') | join(',') }}"
-        #     verb: "PATCH"
-        #   register: enable_failover
-
-        - name: Log of enable_failover
-          include_tasks: tasks/add_log.yml
-          args:
-            apply:
-              tags: ["health"]
-          vars: 
-            log: 
-              enable_failover: "{{ enable_failover }}"
-
-        - name: Fail playbook if failover was not enabled on all nodes
-          include_tasks: tasks/add_failure.yml
-          args:
-            apply:
-              tags: health
-          vars: 
-            failure: 
-              issue: "Failover was not sucessfully enabled on all nodes"
-              details: "{{ failover_not_possible }}"
-          when: enable_failover.failed == true or enable_failover.msg.num_records != failover_not_possible | length 
-
-        when: failover_not_possible | length > 0 and cluster_node_count | int > 2
+      - include_tasks: tasks/health_checks/failover.yml
 
       tags: ["health"]
 
     - name: Check system utilization  
       block: 
-    
-      - name: CPU and Disk utilization should not exceed 50% 
-          (statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3)
-        netapp.ontap.na_ontap_ssh_command:
-          <<: *login
-          command: statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3
-          privilege: adv
-          accept_unknown_host_keys: true
-        register: cpu_disk_check      
-  
-      - name: Log of cpu_disk_check
-        include_tasks: tasks/add_log.yml
-        args:
-          apply:
-            tags: ["cpu_disk"]
-        vars: 
-          log: 
-            cpu_disk_check: "{{ cpu_disk_check.stdout }}"
+
+      - include_tasks: tasks/health_checks/cpu_disk_utilization.yml    
 
       - name: Add warning cpu_disk_check having anything over 50% in the stdout
         include_tasks: tasks/add_warning.yml
-        args:
-          apply:
-            tags: ["cpu_disk"]
         vars: 
           warning:
             issue: "There are CPU and disk utilizations over 50%."
@@ -252,50 +88,7 @@
     - name: Check cluster ring database epoch and quorum master
       block: 
 
-      - name: Get epoch/quorum master info from the cluster ring 
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'cluster/ring'
-          params: 
-            unitname: "{{ item }}"
-            fields: "node,unitname,epoch,db-epoch,db-trnxs,master,online"
-          verb: "GET"
-        loop: "{{ cluster_rings }}"
-        loop_control:
-          label: "{{ item }}"
-        register: verify_cluster_rings
-
-      - name: Log of verify_cluster_rings
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["cluster_rings"]
-        vars: 
-          log: 
-            "verify_cluster_rings": "{{ item.msg.records }}"
-        loop: "{{ verify_cluster_rings.results }}"
-        loop_control:
-          label: "{{ item.item }}"
-
-        
-      - name: Fail playbook if  a.) the per-ring relational database epoch and database epoch do not match for 
-              each node
-              b.) the per-ring quorum master is not the same for all nodes. 
-              (Each ring might have a different quorum master)
-        include_tasks: tasks/add_failure.yml
-        args: 
-          apply:
-            tags: ["cluster_rings"]
-        vars: 
-          failure: 
-            issue: "The database epochs and/or quorum master do not match for each node for {{ item.item }}" 
-            details: "{{ item.msg.records }}"
-        loop: "{{ verify_cluster_rings.results }}"
-        loop_control: 
-          label: "{{ item.item }}"
-        when: item.msg.records | map(attribute='epoch') | unique | length > 1 
-              or item.msg.records | map(attribute='db_epoch') | unique | length > 1
-              or item.msg.records | map(attribute='master') | unique | length > 1
+      - include_tasks: tasks/health_checks/cluster_rings.yml    
 
       tags: ["cluster_rings"]
     
@@ -303,7 +96,6 @@
       block: 
       - name: For larger clusters, find epsilon (`cluster show -fields epsilon`)
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'cluster'
           params: 
             fields: "epsilon"
@@ -312,9 +104,6 @@
 
       - name: Log of cluster_epsilon
         include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["epsilon"]
         vars: 
           log: 
             cluster_epsilon: "{{ cluster_epsilon }}"
@@ -326,7 +115,6 @@
 
       - name: Set epsilon to false, if not on first node (`cluster modify -node <epsilonnode> -epsilon false`)     
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'cluster'
           body: 
             epsilon: false 
@@ -339,7 +127,6 @@
 
       - name: Set epsilon to true on first node (`cluster modify -node <firstnode> -epsilon true`)     
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'cluster'
           body: 
             epsilon: true 
@@ -351,9 +138,6 @@
 
       - name: Log of move_cluster_epsilon
         include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["epsilon"]
         vars: 
           log: 
             cluster_epsilon_move: "{{ move_cluster_epsilon }}"
@@ -361,7 +145,6 @@
 
       - name: Confirm epsilon is at first node (`cluster show -fields epsilon`)
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'cluster'
           params: 
             fields: "epsilon"
@@ -370,18 +153,12 @@
 
       - name: Log of cluster_epsilon_confirm
         include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["epsilon"]
         vars: 
           log: 
             cluster_epsilon_confirm: "{{ cluster_epsilon_confirm }}"
 
       - name: Fail playbook if epsilon is not at first node
         include_tasks: tasks/add_failure.yml
-        args: 
-          apply:
-            tags: ["epsilon"]
         vars:
           failure: 
             issue: "{{ first_node.node }} should be epsilon, but currently {{ epsilon_node.node | default('no node') }} is set as epsilon"
@@ -394,65 +171,10 @@
     - name: Check SAN configuration, if applicable
       block: 
 
-      - name: Verify each node is in SAN quorum (`event log show -message-name scsiblade.*`)
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'event/log'
-          params: 
-            message-name: "scsiblade.*"
-          verb: "GET"
-        register: verify_san_quorum
-
-      - name: Log of verify_san_quorum
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["san"]
-        vars: 
-          log: 
-            san_quorum: "{{ verify_san_quorum }}"
-
-      - name: Verify SAN (iscsi) configuration. Validate server side is set for redundancy. (`iscsi initiator show -fields igroup,initiator-name,tpgroup`)
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'iscsi/initiator'
-          params: 
-            fields: "igroup,initiator-name,tpgroup"
-          verb: "GET"
-        register: verify_iscsi
-
-      - name: Log of verify_iscsi
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["san"]
-        vars: 
-          log: 
-            iscsi: "{{ verify_iscsi }}"
-
-      - name: Verify SAN (fcp) configuration. Validate server side is set for redundancy. (`fcp initiator show -fields igroup,wwpn,lif`)
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'vserver/fcp/initiator'
-          params: 
-            fields: "igroup,wwpn,lif"
-          verb: "GET"
-        register: verify_fcp
-
-      - name: Log of verify_fcp
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["san"]
-        vars: 
-          log: 
-            fcp: "{{ verify_fcp }}"
+      - include_tasks: tasks/health_checks/san.yml    
 
       - name: Verify SAN host configuration before proceeding
         include_tasks: tasks/add_warning.yml
-        args:
-          apply:
-            tags: ["san"]
         vars: 
           warning: 
             issue: "Verify SAN configuration. Validate server side is set for redundancy."
@@ -466,29 +188,10 @@
     - name: Check SnapMirrors and SnapShot count
       block: 
 
-      - name: Find any DP SnampMirrors (`snapmirror list-destinations`)
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'snapmirror/list-destinations'
-          params: 
-            type: "DP"
-          verb: "GET"
-        register: verify_snapmirror_dp_destinations
-
-      - name: Log of verify_snapmirror_dp_destinations
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["dp_snapmirror"]
-        vars: 
-          log: 
-            snapmirror_dp: "{{ verify_snapmirror_dp_destinations }}"
-
+      - include_tasks: tasks/health_checks/dp_snapmirror.yml
+      
       - name: Warn about DP SnapMirror upgrade order
         include_tasks: tasks/add_warning.yml
-        args:
-          apply:
-            tags: ["dp_snapmirror"]
         vars: 
           warning: 
             issue: "**Destination cluster must be upgraded prior 
@@ -501,27 +204,10 @@
     - name: Check snapshot count
       block: 
 
-      - name: Get Snapshot copies (`vol snapshot show`)
-        netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
-          command: 'volume/snapshot'
-          verb: "GET"
-        register: verify_snapshot_count
-
-      - name: Log of verify_snapshot_count
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["snapshots"]
-        vars: 
-          log: 
-            snapshot_count: "{{ verify_snapshot_count.msg.num_records }}"
+      - include_tasks: tasks/health_checks/snapshots_count.yml
 
       - name: Fail playbook if there are more than 20,000 snapshot copies
         include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["snapshots"]
         vars: 
           failure: 
             issue: "Each node must not exceed 20,000 snapshot copies"
@@ -596,7 +282,6 @@
       - name: List any deduplicated volumes over 96% 
               (`volume show -is-sis-volume true -percent-used >96 -fields aggregate,percent-used`)
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'volume'
           params: 
             is-sis-volume: "true"
@@ -630,7 +315,6 @@
 
         - name: Check aggr containing deduplicated volumes (`df -A <aggr>,<aggr2>`)
           netapp.ontap.na_ontap_ssh_command:
-            <<: *login
             command: "df -A {{ large_dedupe_volumes_aggrs | join(',') }}"
             privilege: adv
             accept_unknown_host_keys: true
@@ -769,7 +453,6 @@
 
         - name: All LIFs should be homed prior to upgrades
           netapp.ontap.na_ontap_rest_cli:
-            <<: *login
             command: "network/interface/revert"
             params: 
               "vserver": "*"
@@ -787,7 +470,6 @@
         
         - name: Check to make sure everything got home (net int show -is-home false)
           netapp.ontap.na_ontap_rest_cli: 
-            <<: *login
             command: 'network/interface'
             params: 
               is-home: "false"
@@ -818,7 +500,6 @@
 
       - name: Get ethernet ports that are UP    
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'network/port'
           params: 
             link: "up"
@@ -853,7 +534,6 @@
 
       - name: Get failover groups (`net int failover-groups show`)
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'network/interface/failover-groups'
           params: 
             fields: "vserver,targets,failover-group"
@@ -888,7 +568,6 @@
 
       - name: Get broadcast domains (`broadcast-domain show`)  
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'network/port/broadcast-domain'
           params: 
             fields: "broadcast-domain,ports,mtu,ipspace,failover-groups"
@@ -927,7 +606,6 @@
       block:
       - name: Get running jobs 
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'job'
           params: 
             fields: "name,id,node,state,vserver"
@@ -962,7 +640,6 @@
     - block: 
       - name: Ensure HA is enabled for two node clusters
         netapp.ontap.na_ontap_cluster_ha:
-          <<: *login
           state: present
         register: enable_ha
 
@@ -981,7 +658,6 @@
 
       - name: Get uptime (`system node show -fields uptime`) 
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'system/node'
           params: 
             fields: "model,uptime"
@@ -990,7 +666,6 @@
 
       - name: Get current ONTAP Version
         netapp.ontap.na_ontap_rest_cli: 
-          <<: *login
           command: 'system/image'
           params: 
             iscurrent: "true"

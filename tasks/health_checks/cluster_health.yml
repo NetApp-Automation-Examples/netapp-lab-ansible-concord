@@ -1,0 +1,23 @@
+- name: Verify cluster health (`cluster show`)
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'cluster'
+    params: 
+      fields: "health,eligibility"
+    verb: "GET"
+  register: verify_cluster_health
+
+- name: Log of verify_cluster_health
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      cluster_health: "{{ verify_cluster_health }}"
+
+- name: Add failure if eligibility or health is not true 
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "Health and Eligibility must be `true` for all nodes"
+      details: "{{ verify_cluster_health.msg.records }}"
+  when: verify_cluster_health.msg.records | selectattr('eligibility','eq','false') | 
+        selectattr('health','eq', 'false') | list | length > 0
+

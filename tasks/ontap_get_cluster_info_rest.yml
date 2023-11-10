@@ -3,11 +3,6 @@
     gather_subset: "{{ gather_subset | default(omit) }}"
     parameters: "{{ parameters | default(omit) }}"
     fields: "{{ fields | default(omit) }}"
-    hostname: "{{ ontap_hostname }}"
-    username: "{{ ontap_username }}"
-    password: "{{ ontap_password }}"
-    https: "{{ https }}"
-    validate_certs: "{{ validate_certs }}"
   register: ontap_rest_info_results
 - name: Set ontap_rest_info Fact 
   set_fact:
