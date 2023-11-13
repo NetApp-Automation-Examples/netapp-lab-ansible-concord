@@ -5,7 +5,7 @@
       unitname: "{{ item }}"
       fields: "node,unitname,epoch,db-epoch,db-trnxs,master,online"
     verb: "GET"
-  loop: "{{ cluster_rings }}"
+  loop: "{{ cluster_rings | default(['vldb','mgmt','vifmgr','bcomd','crs']) }}"
   loop_control:
     label: "{{ item }}"
   register: verify_cluster_rings

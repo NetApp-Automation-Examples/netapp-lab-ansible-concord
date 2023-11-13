@@ -1,10 +1,5 @@
 - name: Check for any critical health alerts (`health alert show`)
   netapp.ontap.na_ontap_rest_cli: 
-    hostname: "{{ ontap_hostname }}"
-    username: "{{ ontap_username }}"
-    password: "{{ ontap_password }}"
-    https: "{{ https }}"
-    validate_certs: "{{ validate_certs }}"
     command: 'system/health/alert'
     verb: "GET"
   register: verify_health_alerts
@@ -19,11 +14,6 @@
 
 - name: Check subsystem health (`health subsystem show`)
   netapp.ontap.na_ontap_rest_cli: 
-    # hostname: "{{ ontap_hostname }}"
-    # username: "{{ ontap_username }}"
-    # password: "{{ ontap_password }}"
-    # https: "{{ https }}"
-    # validate_certs: "{{ validate_certs }}"
     command: 'system/health/subsystem'
     params: 
       fields: "health"

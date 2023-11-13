@@ -18,6 +18,7 @@
     summary_logs: []
     allowed_jobs: ["FabricPool Space Job", "SP Certificate Expiry Check Job"]
     cluster_rings: ["vldb","mgmt","vifmgr","bcomd","crs"]
+    check_for_not_online: ["storage/aggregates", "storage/volumes", "svm/svms"]
   tasks:
     - name: Get basic info needed and set variables (`netapp.ontap.na_ontap_rest_info`)
       block: 
@@ -74,14 +75,6 @@
       block: 
 
       - include_tasks: tasks/health_checks/cpu_disk_utilization.yml    
-
-      - name: Add warning cpu_disk_check having anything over 50% in the stdout
-        include_tasks: tasks/add_warning.yml
-        vars: 
-          warning:
-            issue: "There are CPU and disk utilizations over 50%."
-            details: "{{ cpu_disk_check['stdout'] }}"
-        when: cpu_disk_check | regex_findall('([5-9]\\d|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
       
       tags: ["cpu_disk"]
 
@@ -94,6 +87,7 @@
     
     - name: Make sure cluster epsilon is at first node 
       block: 
+
       - name: For larger clusters, find epsilon (`cluster show -fields epsilon`)
         netapp.ontap.na_ontap_rest_cli: 
           command: 'cluster'
@@ -219,60 +213,7 @@
     - name: Check for bad disks
       block:
 
-      - name: Get broken/maintenance disks
-              (netapp.ontap.na_ontap_rest_info, storage/disks, container_type=broken|maintenance)
-        include_tasks: tasks/ontap_get_cluster_info_rest.yml
-        vars: 
-          gather_subset: ['storage/disks']  
-          parameters:
-            container_type: "broken|maintenance"
-
-      - name: Set broken_disks
-        ansible.builtin.set_fact: 
-          broken_disks: "{{ ontap_rest_info['storage/disks']['records'] }}"
-
-      - name: Log of broken_disks
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["disks"]
-        vars: 
-          log: 
-            broken_disks: "{{ broken_disks }}"
-
-      - name: Get pending/reconstructing disks 
-              (netapp.ontap.na_ontap_rest_info, storage/disks, state=pending|reconstruction)
-        include_tasks: tasks/ontap_get_cluster_info_rest.yml
-        vars: 
-          gather_subset: ['storage/disks']  
-          parameters:
-            state: "pending|reconstruction"
-
-      - name: Set pending_disks
-        ansible.builtin.set_fact: 
-          pending_disks: "{{ ontap_rest_info['storage/disks']['records'] }}"
-
-      - name: Log of pending_disks
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["disks"]
-        vars: 
-          log: 
-            pending_disks: "{{ pending_disks }}"
-
-      - name: Fail playbook if any non-healthy disks
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["disks"]
-        vars: 
-          failure: 
-            issue: "There are broken disks and/or disks in a pending / reconstructing state."
-            details: 
-              broken_disks: "{{ broken_disks }}"
-              pending_disks: "{{ pending_disks }}"
-        when: broken_disks | length > 0 or pending_disks | length > 0 
+      - include_tasks: tasks/health_checks/disks.yml
 
       tags: ["disks"]
 
@@ -344,90 +285,62 @@
       
       tags: ["dedupe_volumes"]
 
-    - name: Check datetime 
+    - name: Check date and time 
       block: 
-      - name: Make sure key is set if there are no NTP servers
-        ansible.builtin.set_fact: 
-          cluster_info: "{{ cluster_info | combine({'ntp_servers': []}) }}"
-        when: cluster_info.ntp_servers is undefined
-  
-      - name: Fail playbook if there are not at least 3 NTP Servers
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["datetime"]
-        vars: 
-          failure: 
-            issue: "There must be at least three NTP servers per NetApp best practices 
-                    but there are currently {{ cluster_info.ntp_servers | length }}"
-            details: "{{ cluster_info.ntp_servers }}"
-        when: cluster_info.ntp_servers | length < 3
 
-      - name: Verify cluster dates 
-        ansible.builtin.set_fact: 
-          cluster_dates: "{{ cluster_nodes | map(attribute='date', default='') | list }}"
-
-      - name: Fail playbook if there is any variation among node timestamps 
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["datetime"]
-        vars: 
-          failure: 
-            issue: "Dates and timezones must match on all nodes"
-            details: "{{ cluster_dates }}"
-        when: cluster_dates | unique | length > 1
+      - include_tasks: tasks/health_checks/date_time.yml      
 
       tags: ["datetime"]
 
-    - name: Check for any offline aggregates, volumes, or SVMs
+    - name: Check for any offline objects
       block: 
-      - name: Get any offline aggregates
-        ansible.builtin.set_fact: 
-          offline_aggregates: "{{ aggregate_info | selectattr('state','!=','online') | list }}"
+      - include_tasks: tasks/health_checks/not_online.yml      
+      # - name: Get any offline aggregates
+      #   ansible.builtin.set_fact: 
+      #     offline_aggregates: "{{ aggregate_info | selectattr('state','!=','online') | list }}"
 
-      - name: Fail playbook for any offline aggrs 
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["offline_objects"]
-        vars: 
-          failure: 
-            issue: "All aggregates must be online" 
-            details: "{{ offline_aggregates }}"
-        when: offline_aggregates | length > 0
+      # - name: Fail playbook for any offline aggrs 
+      #   include_tasks: tasks/add_failure.yml
+      #   args:
+      #     apply:
+      #       tags: ["offline_objects"]
+      #   vars: 
+      #     failure: 
+      #       issue: "All aggregates must be online" 
+      #       details: "{{ offline_aggregates }}"
+      #   when: offline_aggregates | length > 0
 
-      - name: Get any offline volumes
-        ansible.builtin.set_fact: 
-          offline_volumes: "{{ volume_info | selectattr('state','!=','online') | list }}"
+      # - name: Get any offline volumes
+      #   ansible.builtin.set_fact: 
+      #     offline_volumes: "{{ volume_info | selectattr('state','!=','online') | list }}"
 
-      - name: Fail playbook for any offline volumes 
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["offline_objects"]
-        vars: 
-          failure: 
-            issue: "All volumes must be online"
-            details: "{{ offline_volumes }}"
-        when: offline_volumes | length > 0
+      # - name: Fail playbook for any offline volumes 
+      #   include_tasks: tasks/add_failure.yml
+      #   args:
+      #     apply:
+      #       tags: ["offline_objects"]
+      #   vars: 
+      #     failure: 
+      #       issue: "All volumes must be online"
+      #       details: "{{ offline_volumes }}"
+      #   when: offline_volumes | length > 0
 
-      - name: Get any offline SVMs
-        ansible.builtin.set_fact: 
-          offline_svms: "{{ vserver_info | selectattr('state','!=','running') | list }}"
+      # - name: Get any offline SVMs
+      #   ansible.builtin.set_fact: 
+      #     offline_svms: "{{ vserver_info | selectattr('state','!=','running') | list }}"
 
-      - name: Fail playbook for any svm's not running
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["offline_objects"]
-        vars: 
-          failure: 
-            issue: "All SVMs must be online"
-            details: "{{ offline_svms }}"
-        when: offline_svms | length > 0
+      # - name: Fail playbook for any svm's not running
+      #   include_tasks: tasks/add_failure.yml
+      #   args:
+      #     apply:
+      #       tags: ["offline_objects"]
+      #   vars: 
+      #     failure: 
+      #       issue: "All SVMs must be online"
+      #       details: "{{ offline_svms }}"
+      #   when: offline_svms | length > 0
 
-      tags: ["offline_objects"]
+      tags: ["not_online"]
 
     - name: Check networking 
       block: 

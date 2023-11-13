@@ -1,0 +1,16 @@
+- name: "Get all {{ check_not_online }} that are not online"
+  include_tasks: tasks/ontap_get_cluster_info_rest.yml
+  vars: 
+    gather_subset: "{{ check_for_not_online }}"
+    parameters:
+      state: "!online"
+      fields: ['*']
+
+- name: "Fail playbook for any offline {{ item }}"
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "All {{ item }} must be online" 
+      details: "{{ ontap_rest_info[item]['records'] }}"
+  loop: "{{ check_for_not_online }}"
+  when: ontap_rest_info[item]['num_records'] | int > 0

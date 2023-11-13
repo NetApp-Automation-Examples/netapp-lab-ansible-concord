@@ -1,0 +1,39 @@
+- name: Get cluster info 
+  include_tasks: tasks/ontap_get_cluster_info_rest.yml
+  vars: 
+    gather_subset: 
+      - cluster
+      - cluster/nodes
+    parameters:
+      fields: ['*']
+
+- name: Set cluster_info and cluster_nodes
+  ansible.builtin.set_fact: 
+    cluster_info: "{{ ontap_rest_info['cluster'] }}"
+    cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+
+- name: Make sure key is set if there are no NTP servers
+  ansible.builtin.set_fact: 
+    cluster_info: "{{ cluster_info | combine({'ntp_servers': []}) }}"
+  when: cluster_info.ntp_servers is undefined
+
+- name: Fail playbook if there are not at least 3 NTP Servers
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "There must be at least three NTP servers per NetApp best practices 
+              but there are currently {{ cluster_info.ntp_servers | length }}"
+      details: "{{ cluster_info.ntp_servers }}"
+  when: cluster_info.ntp_servers | length < 3
+
+- name: Verify cluster dates 
+  ansible.builtin.set_fact: 
+    cluster_dates: "{{ cluster_nodes | map(attribute='date', default='') | list }}"
+
+- name: Fail playbook if there is any variation among node timestamps 
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "Dates and timezones must match on all nodes"
+      details: "{{ cluster_dates }}"
+  when: cluster_dates | unique | length > 1
