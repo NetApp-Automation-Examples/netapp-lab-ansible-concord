@@ -1,5 +1,5 @@
 ---
-- name: Set up simple http server on awx for upgrade playbooks
+- name: Set up simple http server on linux for upgrade playbooks
   hosts: localhost
   gather_facts: no
   collections:
