@@ -31,25 +31,59 @@
         update_check: Lionel Richie
 
   tasks:
-    - name: Check for warnings beyond what we are expecting
-      ansible.builtin.set_fact:
-        validation_warnings: "{{ validation_warnings + [item] }}"
-      loop: "{{ validation_results }}"
-      when: item.update_check not in validation_warnings_to_ignore
+    - name: Get snapmirrors
+      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      vars: 
+        gather_subset: 
+          - snapmirror/relationships
+        parameters:
+          fields: ['*']
+    
+    - name: Debug 
+      ansible.builtin.debug: 
+        var: ontap_rest_info['snapmirror/relationships']['records']
 
-    - name: Log of validation warnings
-      debug:
-        msg: "{{ validation_warnings }}"
+    - name: Get snapmirrors cli
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'snapmirror'
+        verb: "GET"
+      register: get_snapmirror
+    
+    - name: Debug 
+      ansible.builtin.debug: 
+        var: get_snapmirror
 
-    - name: Prompt for review if there are validation warnings that we don't expect
-      ansible.builtin.pause:
-        prompt: "Please review the results of cluster upgrade validation and press 
-                  ENTER to continue with the upgrade. To abort upgrade, hit ctrl+c and then 'A':
-                  \n\n----------------------------------------------\n\n
-                  {% for warning in validation_warnings %}
-                    {{ warning.status }}: \n{{ warning.issue.message }}\n\n
-                    {{ warning.action.message }}
-                    \n\n----------------------------------------------\n\n
+    
 
-                  {% endfor %}"
-      when: validation_warnings | length > 0
+
+    # Quiesece all snapmirrors 
+
+    # Wait until all are quieseced 
+
+    # Resume all snapmirrors 
+
+    # Wait until all are resumed 
+
+
+    # - name: Check for warnings beyond what we are expecting
+    #   ansible.builtin.set_fact:
+    #     validation_warnings: "{{ validation_warnings + [item] }}"
+    #   loop: "{{ validation_results }}"
+    #   when: item.update_check not in validation_warnings_to_ignore
+
+    # - name: Log of validation warnings
+    #   debug:
+    #     msg: "{{ validation_warnings }}"
+
+    # - name: Prompt for review if there are validation warnings that we don't expect
+    #   ansible.builtin.pause:
+    #     prompt: "Please review the results of cluster upgrade validation and press 
+    #               ENTER to continue with the upgrade. To abort upgrade, hit ctrl+c and then 'A':
+    #               \n\n----------------------------------------------\n\n
+    #               {% for warning in validation_warnings %}
+    #                 {{ warning.status }}: \n{{ warning.issue.message }}\n\n
+    #                 {{ warning.action.message }}
+    #                 \n\n----------------------------------------------\n\n
+
+    #               {% endfor %}"
+    #   when: validation_warnings | length > 0
