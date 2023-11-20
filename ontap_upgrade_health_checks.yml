@@ -189,7 +189,8 @@
         vars: 
           warning: 
             issue: "**Destination cluster must be upgraded prior 
-            to upgrading source cluster for DP SnampMirrors**"
+                    to upgrading source cluster for DP SnampMirrors** 
+                    See https://docs.netapp.com/us-en/ontap/upgrade/task_preparing_snapmirror_relationships_for_a_nondisruptive_upgrade_or_downgrade.html"
             details: "{{ verify_snapmirror_dp_destinations }}"
         when: verify_snapmirror_dp_destinations.msg.num_records > 0
 
