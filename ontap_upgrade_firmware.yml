@@ -1,6 +1,6 @@
 ---
 - name: Run Disk Qual/Firmware packages  
-  hosts: "{{ ansible_limit }}"
+  hosts: "{{ ansible_limit | default('localhost') }}"
   gather_facts: no
   connection: 'local'
   collections:
