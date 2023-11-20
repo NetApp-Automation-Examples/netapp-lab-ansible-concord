@@ -133,6 +133,12 @@
                   {% endfor %}"
       when: validation_warnings | length > 0
 
+    # Get snapmirror destination 
+
+    # Quiesece all snapmirrors 
+
+    # Wait until all are quieseced 
+
     - name: Get number of nodes
       include_tasks: tasks/ontap_get_cluster_info_rest.yml
       vars: 
@@ -171,6 +177,10 @@
         autosupport_message: "MAINT=END Completed ANDU {{ ontap_package_version }}"
         type: all
         <<: *login
+
+    # Resume all snapmirrors 
+
+    # Wait until all are resumed 
 
     tags: 
       - update 
