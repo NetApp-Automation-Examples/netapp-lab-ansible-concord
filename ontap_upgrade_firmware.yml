@@ -7,6 +7,13 @@
     - netapp.ontap
   vars_files: 
     - http_server
+  module_defaults:    
+    group/netapp.ontap.netapp_ontap:      
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
   vars:
     ontap_firmware_packages:
       - qual_devices.zip
@@ -21,9 +28,4 @@
     netapp.ontap.na_ontap_firmware_upgrade:
       state: present
       package_url: "{{ http_server_url }}/{{ item }}"
-      hostname: "{{ ontap_hostname }}"
-      username: "{{ ontap_username }}"
-      password: "{{ ontap_password }}"
-      https: "{{ https }}"
-      validate_certs: "{{ validate_certs }}"
     loop: "{{ ontap_firmware_packages }}"
