@@ -5,14 +5,14 @@
   connection: 'local'
   collections:
     - netapp.ontap
+  module_defaults:    
+    group/netapp.ontap.netapp_ontap:      
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
   vars: 
-    module_defaults:    
-      group/netapp.ontap.netapp_ontap:      
-        hostname: "{{ ontap_hostname }}"
-        username: "{{ ontap_username }}"
-        password: "{{ ontap_password }}"
-        https: "{{ https }}"
-        validate_certs: "{{ validate_certs }}"
     validation_warnings: []
     validation_warnings_to_ignore: 
       - Manual checks
