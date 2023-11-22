@@ -39,25 +39,24 @@
         parameters:
           fields: ['*']
     
-    - name: Debug 
-      ansible.builtin.debug: 
-        var: ontap_rest_info['snapmirror/relationships']['records']
-
-    - name: Get snapmirrors cli
-      netapp.ontap.na_ontap_rest_cli: 
-        command: 'snapmirror'
-        verb: "GET"
-      register: get_snapmirror
-    
-    - name: Debug 
-      ansible.builtin.debug: 
-        var: get_snapmirror
-
-    
-
+    - name: Set all_snapmirrors  
+      ansible.builtin.set_fact: 
+        all_snapmirrors: "{{ ontap_rest_info['snapmirror/relationships']['records'] }}"
 
     # Quiesece all snapmirrors 
+    - name: Quiesece snapmirrors
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'snapmirror/quiesce' 
+        params: 
+          destination-path: "{{ all_snapmirrors | map(attribute='destination') | map(attribute='path') | join(',') }}"
+        verb: "PATCH"
+      register: quiesece_snapmirrors
+    
+    - name: Debug 
+      ansible.builtin.debug: 
+        var: quiesece_snapmirrors
 
+  
     # Wait until all are quieseced 
 
     # Resume all snapmirrors 
