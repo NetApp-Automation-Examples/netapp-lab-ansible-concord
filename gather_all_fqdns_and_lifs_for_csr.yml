@@ -1,0 +1,39 @@
+---
+- name: Seemingly Ranch   
+  hosts: "{{ ansible_limit }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  tasks:
+  - name: Get cluster FQDN / LIF info
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: 
+        - cluster
+        #- vserver_info
+      parameters:
+        fields: ['name,management_interfaces,dns_domains']
+
+  - name: Print
+    ansible.builtin.debug:
+      var: ontap_rest_info
+
+  - name: Get SVM FQDN / LIF info
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: 
+        - vserver_info
+      parameters:
+        fields: ['*']
+
+  - name: Print
+    ansible.builtin.debug:
+      var: ontap_rest_info
