@@ -51,31 +51,40 @@
   - name: Set svms fact
     ansible.builtin.set_fact: 
       svms: "{{ ontap_rest_info['svm/svms']['records'] }}"
-
-  - name: Set svms_fqdns fact 
+      
+  - name: Set svm_fqdns and svm_mgmt_lifs fact
     ansible.builtin.set_fact: 
       svm_fqdns: "{{ svms | map(attribute='name') | product(['.'+ontap_base_domain]) | map('join') | list }}"
-      
-  - name: Set svm_interfaces fact
-    ansible.builtin.set_fact: 
-      svm_ip_interfaces: "{{ svm_ip_interfaces | default([]) + item }}"
+      svm_mgmt_lifs: "{{ svm_mgmt_lifs | default([]) + item | selectattr('services', 'contains', 'management_https') | map(attribute='ip') | map(attribute='address') }}"
     loop: "{{ svms | map(attribute='ip_interfaces' ) }}"
     loop_control:
       label: "{{ item | map(attribute='name') }}"
 
-  - name: Set svm_mgmt_lifs  fact
+  - name: Get Node name / LIF info
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: 
+        - cluster/nodes
+      parameters:
+        fields: ['management_interfaces']
+
+  - name: Set nodes fact
+    ansible.builtin.set_fact:
+      nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+
+  - name: Set node_fqdns and node_mgmt_lifs
     ansible.builtin.set_fact: 
-      svm_mgmt_lifs: "{{ svm_mgmt_lifs | default([]) + [item.ip.address] }}"
-    when: "svm_ip_interfaces is defined and 'management_https' in item.services"
-    loop: "{{ svm_ip_interfaces }}"
+      node_fqdns: "{{ nodes | map(attribute='name') | product(['.'+ontap_base_domain]) | map('join') | list }}"
+      node_mgmt_lifs: "{{ node_mgmt_lifs | default([]) + item | map(attribute='ip') | map(attribute='address') }}"
+    loop: "{{ nodes | map(attribute='management_interfaces' ) }}"
     loop_control:
-      label: "{{ item.name }}"
+      label: "{{ item | map(attribute='name') }}"
 
   - name: Set CSR vars 
     ansible.builtin.set_fact:
       csr: 
         common_name: "{{ ontap_hostname }}"
-        san: "{{ ontap_mgmt_lifs + svm_fqdns | default([]) + svm_mgmt_lifs | default([]) }}"
+        san: "{{ ontap_mgmt_lifs + node_fqdns + node_mgmt_lifs + svm_fqdns | default([]) + svm_mgmt_lifs | default([]) }}"
 
   - name: Let's see what we have going on mkay
     ansible.builtin.debug:
