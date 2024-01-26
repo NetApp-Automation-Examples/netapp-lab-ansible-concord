@@ -52,11 +52,30 @@
     ansible.builtin.set_fact: 
       svms: "{{ ontap_rest_info['svm/svms']['records'] }}"
 
+  - name: Set svms_fqdns fact 
+    ansible.builtin.set_fact: 
+      svm_fqdns: "{{ svms | map(attribute='name') | product(['.'+ontap_base_domain]) | map('join') | list }}"
+      
+  - name: Set svm_interfaces fact
+    ansible.builtin.set_fact: 
+      svm_ip_interfaces: "{{ svm_ip_interfaces | default([]) + item }}"
+    loop: "{{ svms | map(attribute='ip_interfaces' ) }}"
+    loop_control:
+      label: "{{ item | map(attribute='name') }}"
+
+  - name: Set svm_mgmt_lifs  fact
+    ansible.builtin.set_fact: 
+      svm_mgmt_lifs: "{{ svm_mgmt_lifs | default([]) + [item.ip.address] }}"
+    when: "svm_ip_interfaces is defined and 'management_https' in item.services"
+    loop: "{{ svm_ip_interfaces }}"
+    loop_control:
+      label: "{{ item.name }}"
+
   - name: Set CSR vars 
     ansible.builtin.set_fact:
       csr: 
         common_name: "{{ ontap_hostname }}"
-        san: "{{ ontap_mgmt_lifs + svms | map(attribute='name')}}"
+        san: "{{ ontap_mgmt_lifs + svm_fqdns | default([]) + svm_mgmt_lifs | default([]) }}"
 
   - name: Let's see what we have going on mkay
     ansible.builtin.debug:
