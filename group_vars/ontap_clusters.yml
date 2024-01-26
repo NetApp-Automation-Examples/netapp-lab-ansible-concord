@@ -1,4 +1,5 @@
-ontap_hostname: "{{ ontap_cluster_lif }}"
+ontap_base_domain: demo.netapp.com
+ontap_hostname: "{{ inventory_hostname }}.{{ ontap_base_domain }}" 
 ontap_username: admin
 ontap_password: "{{ lookup('env', 'ONTAP_PASSWORD') }}"
 https: true

@@ -13,27 +13,51 @@
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
   tasks:
-  - name: Get cluster FQDN / LIF info
+  - name: Get cluster mgmt LIF(s)
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
     vars: 
       gather_subset: 
         - cluster
         #- vserver_info
       parameters:
-        fields: ['name,management_interfaces,dns_domains']
+        fields: ['management_interfaces']
 
-  - name: Print
-    ansible.builtin.debug:
-      var: ontap_rest_info
+  - name: Set ontap_mgmt_lifs fact
+    ansible.builtin.set_fact: 
+      ontap_mgmt_lifs: "{{ ontap_rest_info['cluster']['management_interfaces'] | map(attribute='ip') | map(attribute='address') }}"
 
-  - name: Get SVM FQDN / LIF info
+  - name: Validate FQDN from the first mgmt LIF via nslookup
+    ansible.builtin.shell:  "nslookup {{ ontap_mgmt_lifs | first }}"
+    register: nslookup 
+
+  - name: Log of nslookup
+    ansible.builtin.debug: 
+      var: nslookup.stdout 
+
+  - name: "Verify {{ ontap_hostname }} is in nslookup results"
+    ansible.builtin.fail:
+      msg: "{{ ontap_hostname }} is not in {{ nslookup.stdout }}, therefore the common name will be incorrect on the certificate."
+    when: ontap_hostname not in nslookup.stdout
+
+  - name: Get SVM name / LIF info
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
     vars: 
       gather_subset: 
-        - vserver_info
+        - svm/svms
       parameters:
-        fields: ['*']
+        state: running
+        fields: ['ip_interfaces']
 
-  - name: Print
+  - name: Set svms fact
+    ansible.builtin.set_fact: 
+      svms: "{{ ontap_rest_info['svm/svms']['records'] }}"
+
+  - name: Set CSR vars 
+    ansible.builtin.set_fact:
+      csr: 
+        common_name: "{{ ontap_hostname }}"
+        san: "{{ ontap_mgmt_lifs + svms | map(attribute='name')}}"
+
+  - name: Let's see what we have going on mkay
     ansible.builtin.debug:
-      var: ontap_rest_info
+      var: csr
