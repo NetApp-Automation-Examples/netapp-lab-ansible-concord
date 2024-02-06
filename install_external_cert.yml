@@ -26,21 +26,30 @@
     ontap_svm_certs: []
 
   tasks:
-  - name: Get Cluster SVM name and SVM names
+  - name: Get Cluster SVM name
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
     vars: 
       gather_subset: 
         - cluster
-        - svm/svms
       fields: ["name"]
 
   - name: Set cluster_svm fact
     ansible.builtin.set_fact: 
-      cluster_svm: ontap_rest_info['cluster']['records'][0]['name']
-      # This assumes the SAN contains all the SVMs 
-      svms: ontap_rest_info['svm/svms']['records']
-      svms_comma_list: ontap_rest_info['svm/svms']['records'] | map('attribute', 'name') | join(',')
-      svms_pipe_list: ontap_rest_info['svm/svms']['records'] | map('attribute', 'name') | join('|')
+      cluster_svm: "{{ ontap_rest_info.cluster.name }}"
+
+  - name: Get SVM names
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: 
+        - svm/svms
+      fields: ["name"]
+
+  - name: Set svm facts
+    ansible.builtin.set_fact: 
+      # This assumes the SAN field of the cert contains all the SVMs 
+      svms: "{{ ontap_rest_info['svm/svms']['records'] }}"
+      svms_comma_list: "{{ ontap_rest_info['svm/svms']['records'] | map(attribute='name') | join(',') }}"
+      svms_pipe_list: "{{ ontap_rest_info['svm/svms']['records'] | map(attribute='name') | join('|') }}"
 
   - name: Check to see if this cert already exists at the cluster level
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
@@ -51,7 +60,7 @@
         public_certificate: "{{ lookup('file', public_cert_file) }}"
         common_name: "{{ cert_common_name }}"
         type: server
-        svm.name: "{{ cluster_svm }}"
+        scope: cluster
       fields: ["*"]
 
   - name: Set ontap_cluster_cert
@@ -113,25 +122,89 @@
 
   - name: Set ontap_svm_certs
     ansible.builtin.set_fact:
-      
+      ontap_svm_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+    when: ontap_rest_info['security/certificates']['num_records'] > 0 
 
+  - name: Log of ontap_svm_certs
+    ansible.builtin.debug: 
+      var: ontap_svm_certs
 
-  - name: Activate the certificates
+  # If any SVMs don't have the cert yet, let's do the thing
+  - block: 
+    - name: Install the signed certificate on {{ item.name }}
+      netapp.ontap.na_ontap_security_certificates:
+        common_name: "{{ cert_common_name }}"
+        name: "{{ cert_common_name }}{{ cert_name_append }}"
+        public_certificate: "{{ lookup('file', public_cert_file) }}"
+        private_key: "{{ lookup('file', private_key_file) }}"
+        svm: "{{ item.name }}"
+        type: server
+        intermediate_certificates: "{{ lookup('file', intermediate_cert_file) }}"
+        expiry_time: "{{ expiry_time }}"
+      loop: "{{ svms }}"
+      loop_control: 
+        label: "{{ item.name }}"
+      when: "{{ item.name not in ontap_svm_certs }}"
+
+    - name: Get Serial Number from newly installed certificate
+      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      vars: 
+        gather_subset: 
+          - security/certificates
+        parameters:
+          public_certificate: "{{ lookup('file', public_cert_file) }}"
+          common_name: "{{ cert_common_name }}"
+          type: server
+          scope: svm
+          name: "{{ cert_common_name }}{{ cert_name_append }}"
+    
+    - name: Set ontap_svm_certs fact
+      ansible.builtin.set_fact:
+        ontap_svm_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+
+    - name: Log of ontap_svm_certs
+      ansible.builtin.debug:
+        var: ontap_svm_certs
+
+    when: ontap_svm_certs | length < svms | length 
+
+  - name: Activate the cluster certificate
     netapp.ontap.na_ontap_rest_cli: 
       command: "security/ssl"
       params: 
         server-enabled: "true"
-        vserver: "{{ cluster_svms }}, {{ svms_comma_list }}"
+        vserver: "{{ cluster_svm }}"
       body: 
-        ca: "{{ ontap_cert.ca }}"
-        serial: "{{ ontap_cert.serial_number }}"
-        common-name: "{{ ontap_cert.common_name }}"
+        ca: "{{ ontap_cluster_cert.ca }}"
+        serial: "{{ ontap_cluster_cert.serial_number }}"
+        common-name: "{{ ontap_cluster_cert.common_name }}"
       verb: "PATCH"
-    register: activate_cluster_certs
+    register: activate_cluster_cert
 
-  - name: Log of activate_cluster_certs
+  - name: Log of activate_cluster_cert
     ansible.builtin.debug: 
-      var: activate_cluster_certs
+      var: activate_cluster_cert
+
+  - name: Activate the SVM certificates
+    netapp.ontap.na_ontap_rest_cli: 
+      command: "security/ssl"
+      params: 
+        server-enabled: "true"
+        vserver: "{{ item.svm.name }}"
+      body: 
+        ca: "{{ item.ca }}"
+        serial: "{{ item.serial_number }}"
+        common-name: "{{ item.common_name }}"
+      verb: "PATCH"
+    register: activate_svm_certs
+    loop: "{{ ontap_svm_certs }}"
+    loop_control:
+      label: "{{ item.name }}"
+
+  - name: Log of activate_svm_certs
+    ansible.builtin.debug: 
+      var: activate_svm_certs
+
 
   # - name: Verify the newly installed cert is activated 
   
