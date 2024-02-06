@@ -1,7 +1,7 @@
 ---
 - name: That's So Raven  
   hosts: "{{ ansible_limit }}"
-  gather_facts: no
+  gather_facts: true
   connection: 'local'
   collections:
     - netapp.ontap
@@ -14,58 +14,88 @@
       validate_certs: "{{ validate_certs }}"
   vars: 
     cert_common_name: "{{ ontap_hostname }}"
-    cert_name_append: "--NetApp-CA-Signed--{{ ansible_date_time.iso8601_basic_short }}"
+    cert_name_append: "--NetApp-CA-Signed--{{ ansible_date_time.date }}"
     cert_dir: "{{ playbook_dir}}/tmp/"
     cert_base_file_name: "{{ cert_dir }}{{ cert_common_name }}"
     private_key_file: "{{ cert_base_file_name }}.key"
     public_cert_file: "{{ cert_base_file_name }}.crt"
     intermediate_cert_file: "{{ cert_base_file_name }}-ca-bundle.crt"
+    expiry_time:  P365DT # 1 year
+    ontap_intermediate_cert: ""
+    ontap_cert: ""
+
   tasks:
-  - name: Install the signed certificate on the ONTAP system
-    netapp.ontap.na_ontap_security_certificates:
-      common_name: "{{ cert_common_name }}"
-      name: "{{ cert_common_name }}{{ cert_name_append }}"
-      public_certificate: "{{ lookup('file', public_cert_file) }}"
-      private_key: "{{ lookup('file', private_key_file) }}"
-      svm: "{{ cert_svm }}"
-      type: server
-      intermediate_certificates: "{{ lookup('file', intermediate_cert_file) }}"
-      expiry_time: "{{ expiry_time }}"
 
-  - name: Get Serial Number from newly installed certificate
-    netapp.ontap.na_ontap_rest_cli: 
-      command: 'security/certificate'
-      params: 
+  - name: Check to see if this cert already exists 
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: 
+        - security/certificates
+      parameters:
+        public_certificate: "{{ lookup('file', public_cert_file) }}"
+        common_name: "{{ cert_common_name }}"
         type: server
-        self-signed: "false"
-        cert-name: "{{ cert_common_name }}{{ cert_name_append }}"
-      verb: "GET"
-    register: get_installed_cert
-    
-  - name: Set installed_cert fact
-    ansible.builtin.set_fact:
-      installed_cert: "{{ get_installed_cert['msg']['records'] | first }}"
+      fields: ["*"]
 
-  - name: Log of installed_cert
-    ansible.builtin.debug:
-      msg: "{{ installed_cert }}"
+  - name: Set ontap_cert
+    ansible.builtin.set_fact: 
+      ontap_cert: "{{ ontap_rest_info['security/certificates']['records'] | first }}"
+    when: ontap_rest_info['security/certificates']['num_records'] > 0       
 
-  - name: Activate the certificate
+  - name: Log of ontap_cert
+    ansible.builtin.debug: 
+      var: ontap_cert
+  
+  # If cert is not installed yet, let's do the thing
+  - block: 
+    - name: Install the signed certificate at the ONTAP Cluster level 
+      netapp.ontap.na_ontap_security_certificates:
+        common_name: "{{ cert_common_name }}"
+        name: "{{ cert_common_name }}{{ cert_name_append }}"
+        public_certificate: "{{ lookup('file', public_cert_file) }}"
+        private_key: "{{ lookup('file', private_key_file) }}"
+        #svm: "{{ cert_svm }}"
+        type: server
+        intermediate_certificates: "{{ omit if else lookup('file', intermediate_cert_file) }}"
+        expiry_time: "{{ expiry_time }}"
+
+    - name: Get Serial Number from newly installed certificate
+      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      vars: 
+        gather_subset: 
+          - security/certificates
+        parameters:
+          public_certificate: "{{ lookup('file', public_cert_file) }}"
+          common_name: "{{ cert_common_name }}"
+          type: server
+          name: "{{ cert_common_name }}{{ cert_name_append }}"
+      
+    - name: Set ontap_cert fact
+      ansible.builtin.set_fact:
+        ontap_cert: "{{ ontap_rest_info['security/certificates']['records'] | first }}"
+
+    - name: Log of installed_cert
+      ansible.builtin.debug:
+        msg: "{{ ontap_cert }}"
+
+    when: ontap_cert.common_name is not defined
+
+  - name: Activate the certificate at the cluster level first
     netapp.ontap.na_ontap_rest_cli: 
       command: "security/ssl"
       params: 
         server-enabled: "true"
-        vserver: "{{ cert_svm }}"
+        #vserver: "{{ cert_svm }}"
       body: 
-        ca: "{{ installed_cert.ca }}"
-        serial: "{{ installed_cert.serial }}"
-        common-name: "{{ cert_common_name }}"
+        ca: "{{ ontap_cert.ca }}"
+        serial: "{{ ontap_cert.serial_number }}"
+        common-name: "{{ ontap_cert.common_name }}"
       verb: "PATCH"
-    register: activate_cert
+    register: activate_cluster_cert
 
-  - name: Log of activate_cert
+  - name: Log of activate_cluster_cert
     ansible.builtin.debug: 
-      var: activate_cert
+      var: activate_cluster_cert
 
   # - name: Verify the newly installed cert is activated 
   
