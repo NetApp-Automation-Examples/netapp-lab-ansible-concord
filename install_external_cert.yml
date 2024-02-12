@@ -82,7 +82,7 @@
         public_certificate: "{{ lookup('file', public_cert_file) }}"
         private_key: "{{ lookup('file', private_key_file) }}"
         type: server
-        intermediate_certificates: "{{ omit if else lookup('file', intermediate_cert_file) }}"
+        intermediate_certificates: "{{ lookup('file', intermediate_cert_file) }}"
         expiry_time: "{{ expiry_time }}"
 
     - name: Get Serial Number from newly installed certificate
@@ -96,11 +96,11 @@
           type: server
           name: "{{ cert_common_name }}{{ cert_name_append }}"
       
-    - name: Set ontap_cert fact
+    - name: Set ontap_cluster_cert fact
       ansible.builtin.set_fact:
         ontap_cluster_cert: "{{ ontap_rest_info['security/certificates']['records'] | first }}"
 
-    - name: Log of installed_cert
+    - name: Log of ontap_cluster_cert
       ansible.builtin.debug:
         msg: "{{ ontap_cluster_cert }}"
 
