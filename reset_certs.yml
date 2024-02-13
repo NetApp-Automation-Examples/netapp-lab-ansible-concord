@@ -1,0 +1,85 @@
+---
+- name: Return cluster to default self-signed certs
+  hosts: "{{ ansible_limit }}"
+  gather_facts: true
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    cluster_cert_ca: demo.netapp.com
+    cluster_cert_common_name: "{{ ontap_hostname }}"
+    cert_name_base: "--NetApp-CA-Signed--"
+  
+  tasks:
+  - name: Get Cluster SVM name
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: 
+        - cluster
+      fields: ["name"]
+
+  - name: Set cluster_svm fact
+    ansible.builtin.set_fact: 
+      cluster_svm: "{{ ontap_rest_info.cluster.name }}"
+
+  - name: Get SVM names
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: 
+        - svm/svms
+      fields: ["name"]
+
+  - name: Set svm facts
+    ansible.builtin.set_fact: 
+      # This assumes the SAN field of the cert contains all the SVMs 
+      svms: "{{ ontap_rest_info['svm/svms']['records'] }}"
+
+  - name: Get the original cluster cert
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: 
+        - security/certificates
+      parameters:
+        common_name: "{{ cluster_cert_common_name }}"
+        ca: "{{ cluster_cert_ca }}"
+        type: server
+        scope: cluster
+      fields: ["*"]
+
+  - name: Set ontap_cluster_cert
+    ansible.builtin.set_fact: 
+      ontap_cluster_cert: "{{ ontap_rest_info['security/certificates']['records'] | first }}"
+    when: ontap_rest_info['security/certificates']['num_records'] > 0       
+
+  - name: Log of ontap_cluster_cert
+    ansible.builtin.debug: 
+      var: ontap_cluster_cert
+  
+  - name: Enable original cert
+    netapp.ontap.na_ontap_rest_cli: 
+      command: "security/ssl"
+      params: 
+        server-enabled: "true"
+        vserver: "{{ cluster_svm }}"
+      body: 
+        ca: "{{ ontap_cluster_cert.ca }}"
+        serial: "{{ ontap_cluster_cert.serial_number }}"
+        common-name: "{{ ontap_cluster_cert.common_name }}"
+      verb: "PATCH"
+
+  - name: Delete the external certs from the cluster
+    netapp.ontap.na_ontap_rest_cli: 
+      command: "security/certificate"
+      params: 
+        type: "*"
+        cert-name: "*{{ cert_name_base }}*"
+        vserver: "*"
+      verb: "DELETE"
+

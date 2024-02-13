@@ -14,7 +14,8 @@
       validate_certs: "{{ validate_certs }}"
   vars: 
     cert_common_name: "{{ ontap_hostname }}"
-    cert_name_append: "--NetApp-CA-Signed--{{ ansible_date_time.date }}"
+    cert_name_base: "--NetApp-CA-Signed--"
+    cert_name_append: "{{ cert_name_base }}{{ ansible_date_time.date }}"
     cert_dir: "{{ playbook_dir}}/tmp/"
     cert_base_file_name: "{{ cert_dir }}{{ cert_common_name }}"
     private_key_file: "{{ cert_base_file_name }}.key"
@@ -90,6 +91,7 @@
       vars: 
         gather_subset: 
           - security/certificates
+        fields: ["*"]
         parameters:
           public_certificate: "{{ lookup('file', public_cert_file) }}"
           common_name: "{{ cert_common_name }}"
@@ -131,7 +133,7 @@
 
   # If any SVMs don't have the cert yet, let's do the thing
   - block: 
-    - name: Install the signed certificate on {{ item.name }}
+    - name: Install the signed certificate on SVMs
       netapp.ontap.na_ontap_security_certificates:
         common_name: "{{ cert_common_name }}"
         name: "{{ cert_common_name }}{{ cert_name_append }}"
@@ -144,13 +146,14 @@
       loop: "{{ svms }}"
       loop_control: 
         label: "{{ item.name }}"
-      when: "{{ item.name not in ontap_svm_certs }}"
+      when: item.name not in ontap_svm_certs
 
     - name: Get Serial Number from newly installed certificate
       include_tasks: tasks/ontap_get_cluster_info_rest.yml
       vars: 
         gather_subset: 
           - security/certificates
+        fields: ["*"]
         parameters:
           public_certificate: "{{ lookup('file', public_cert_file) }}"
           common_name: "{{ cert_common_name }}"
@@ -167,6 +170,10 @@
         var: ontap_svm_certs
 
     when: ontap_svm_certs | length < svms | length 
+
+  - name: WUT
+    ansible.builtin.debug:
+      var: ontap_cluster_cert
 
   - name: Activate the cluster certificate
     netapp.ontap.na_ontap_rest_cli: 
@@ -203,7 +210,6 @@
         fields: "ca,serial,common-name,vserver,server-enabled,client-enabled"
       body: 
         ca: "{{ ontap_cluster_cert.ca }}"
-        serial: "{{ ontap_cluster_cert.serial_number }}"
         common-name: "{{ ontap_cluster_cert.common_name }}"
       verb: "GET"
     register: verify_certs_installed_results
@@ -225,6 +231,6 @@
     ansible.builtin.fail:
       msg: "One or more of the SVM certs is not present in the `ssl show -server-enabled true` output so it did not get succesfully activated."
     #We expect there to be a difference of one because of the cluster svm
-    when: verify_certs_installed | map(attribute='vserver') | difference(svm_names) | length > 1 
+    when: (verify_certs_installed | length) <= (ontap_svm_certs | length)  
     
       
