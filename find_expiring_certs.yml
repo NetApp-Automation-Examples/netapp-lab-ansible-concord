@@ -1,0 +1,38 @@
+---
+- name: Find expiring/expired/missing SSL certificates for ONTAP Cluster 
+  hosts: "{{ ansible_limit }}"
+  gather_facts: true
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    expiry_time:  P365DT # 1 year
+    #expired/expiring/missing certs
+    certs_to_renew: []
+
+  tasks:
+  - name: Get current SSL Certificate status for cluster + svms 
+    netapp.ontap.na_ontap_rest_cli: 
+      command: "security/ssl"
+      params: 
+        fields: "ca,serial,common-name,vserver,server-enabled,client-enabled"
+      verb: "GET"
+    register: get_ontap_current_ssl_certs
+
+  - name: Log of get_ontap_current_ssl_certs
+    ansible.builtin.debug:
+      var: get_ontap_current_ssl_certs
+
+  - name: Set ontap_current_ssl_certs fact
+    ansible.builtin.set_fact:
+      ontap_current_ssl_certs: "{{ get_ontap_current_ssl_certs.msg.records }}"
+
+  - name: Check each ssl certificate to determine if expired (or missing) / expiring
+
