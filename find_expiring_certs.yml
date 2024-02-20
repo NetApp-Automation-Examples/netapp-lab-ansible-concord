@@ -13,26 +13,81 @@
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
   vars: 
-    expiry_time:  P365DT # 1 year
-    #expired/expiring/missing certs
-    certs_to_renew: []
+    cert_common_name: "{{ ontap_hostname }}"
+    expiring_threshold: 90
+    ontap_cluster_public_cert_is_expiring: False
 
   tasks:
+  - name: Get the cluster ssl certificate info from the common name as the FQDN over HTTPS
+    community.crypto.get_certificate:
+      host: "{{ cert_common_name }}"
+      port: 443
+    delegate_to: localhost
+    run_once: true
+    register: ontap_cluster_public_cert
+
+  - name: Calculate days until certificate expires
+    ansible.builtin.set_fact:
+      ontap_cluster_public_cert_days_until_expire: "{{ (( ontap_cluster_public_cert.not_after | to_datetime('%Y%m%d%H%M%SZ')) - (ansible_date_time.iso8601 | to_datetime('%Y-%m-%dT%H:%M:%SZ')) ).days }}"
+      
+  - name: Log of ontap_cluster_public_cert_days_until_expire vs expiring_threshold
+    ansible.builtin.debug:
+      msg: "Expires in {{ ontap_cluster_public_cert_days_until_expire }} days vs expiring threshold of {{ expiring_threshold }} days"
+
+  - name: Set ontap_cluster_public_cert_is_expiring to True if it is so
+    ansible.builtin.set_fact:
+      ontap_cluster_public_cert_is_expiring: True
+    when: ontap_cluster_public_cert_days_until_expire | int < expiring_threshold | int
+
+  - name: Log of ontap_cluster_public_cert_is_expiring
+    ansible.builtin.debug:
+      var: ontap_cluster_public_cert_is_expiring
+
+  - meta: end_play
+
+  # Started down this path, but figured out it was extra work compared to the above.
   - name: Get current SSL Certificate status for cluster + svms 
     netapp.ontap.na_ontap_rest_cli: 
       command: "security/ssl"
       params: 
         fields: "ca,serial,common-name,vserver,server-enabled,client-enabled"
       verb: "GET"
-    register: get_ontap_current_ssl_certs
+    register: get_ontap_active_ssl
 
-  - name: Log of get_ontap_current_ssl_certs
+  - name: Log of get_ontap_active_ssl
     ansible.builtin.debug:
-      var: get_ontap_current_ssl_certs
+      var: get_ontap_active_ssl
 
-  - name: Set ontap_current_ssl_certs fact
+  - name: Set ontap_active_ssl fact
     ansible.builtin.set_fact:
-      ontap_current_ssl_certs: "{{ get_ontap_current_ssl_certs.msg.records }}"
+      ontap_active_ssl: "{{ get_ontap_active_ssl.msg.records }}"
+  
+  - name: Use ca/svm/common name/serial of active certificates to grab certificates
+    netapp.ontap.na_ontap_rest_cli:
+      command: "security/certificate"
+      params:
+        vserver: "{{ item.vserver }}"
+        type: "server"
+        fields: "ca,serial,common-name,vserver,expiration,type"
+      body: 
+        ca: "{{ item.ca }}"
+        serial: "{{ item.serial }}"
+        common-name: "{{ item.common_name }}"
+      verb: "GET"
+    loop: "{{ ontap_active_ssl }}"
+    loop_control:
+      label: "{{ item.common_name }} - {{ item.serial }}"
+    register: get_ontap_active_ssl_cert_info
 
-  - name: Check each ssl certificate to determine if expired (or missing) / expiring
+  - name: Get results into ontap_active_ssl_certs 
+    ansible.builtin.set_fact:
+      ontap_active_ssl_certs: "{{ ontap_active_ssl_certs | default([]) + item }}"
+    loop: "{{ get_ontap_active_ssl_cert_info.results | map(attribute='msg.records') | list }}"
+
+  - name: Log of ontap_active_ssl_certs
+    ansible.builtin.debug:
+      var: ontap_active_ssl_certs
+
+#  - name: Check each ssl certificate to determine if expired (or missing) / expiring
+
 
