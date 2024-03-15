@@ -324,6 +324,41 @@
 
     - name: Check networking 
       block: 
+      - name: Check for cluster DNS not being up
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'dns/check'
+          params: 
+            status: "!up"
+            vserver: "{{ cluster_info.name }}" 
+          verb: "GET"
+        register: verify_dns_status
+
+      - name: Fail playbook if any cluster DNS status is not up
+        include_tasks: tasks/add_failure.yml
+        vars: 
+          failure: 
+            issue: "All cluster DNS nameservers must be up"
+            records: "{{ verify_dns_status }}"
+        when: verify_dns_status.msg.num_records > 0
+
+      - name: Check to make sure status-oper and status-admin are up 
+              (`net int show -vserver * status-oper !up status-admin !up -fields status-oper,status-admin`)
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'network/interface'
+          params: 
+            status-oper: "!up"
+            status-admin: "!up"
+            fields: "status-oper,status-admin"
+          verb: "GET"
+        register: verify_net_int_status_oper_admin
+
+      - name: Fail playbook if any status-oper or status-admin LIFs are not up
+        include_tasks: tasks/add_failure.yml
+        vars: 
+          failure: 
+            issue: "status-oper and status-admin must be up on all LIFss"
+            records: "{{ verify_net_int_status_oper_admin.msg.records }}"
+        when: verify_net_int_status_oper_admin.msg.num_records > 0
 
       # TODO - this feels janky and I think I should be able to do this without a loop
       - name: Check for any LIFs not being home
