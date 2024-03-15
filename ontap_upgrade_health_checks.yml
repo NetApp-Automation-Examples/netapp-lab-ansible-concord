@@ -218,9 +218,29 @@
 
       tags: ["disks"]
 
-    - name: Validate deduplicated volumes
+    - name: Check for inconsistent volumes
       block: 
+      - name: Check for inconsistent volumes (`volume show -is-inconsistent true`)
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'volume'
+          params: 
+            is-inconsistent: "true"
+          verb: "GET"
+        register: check_for_inconsistent_volumes
 
+      - name: Fail playbook if there are any inconsistent volumes
+        include_tasks: tasks/add_failure.yml
+        vars: 
+          failure: 
+            issue: "There cannot be any inconsistent volumes"
+            records: "{{ check_for_inconsistent_volumes.msg.records }}"
+        when: check_for_inconsistent_volumes.msg.num_records > 0
+        
+      tags: ["inconsistent_volumes"]
+
+
+    - name: Validate deduplicated volumes 
+      block: 
       - name: List any deduplicated volumes over 96% 
               (`volume show -is-sis-volume true -percent-used >96 -fields aggregate,percent-used`)
         netapp.ontap.na_ontap_rest_cli: 
