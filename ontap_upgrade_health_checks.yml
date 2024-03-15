@@ -295,51 +295,10 @@
 
     - name: Check for any offline objects
       block: 
-      - include_tasks: tasks/health_checks/not_online.yml      
-      # - name: Get any offline aggregates
-      #   ansible.builtin.set_fact: 
-      #     offline_aggregates: "{{ aggregate_info | selectattr('state','!=','online') | list }}"
-
-      # - name: Fail playbook for any offline aggrs 
-      #   include_tasks: tasks/add_failure.yml
-      #   args:
-      #     apply:
-      #       tags: ["offline_objects"]
-      #   vars: 
-      #     failure: 
-      #       issue: "All aggregates must be online" 
-      #       details: "{{ offline_aggregates }}"
-      #   when: offline_aggregates | length > 0
-
-      # - name: Get any offline volumes
-      #   ansible.builtin.set_fact: 
-      #     offline_volumes: "{{ volume_info | selectattr('state','!=','online') | list }}"
-
-      # - name: Fail playbook for any offline volumes 
-      #   include_tasks: tasks/add_failure.yml
-      #   args:
-      #     apply:
-      #       tags: ["offline_objects"]
-      #   vars: 
-      #     failure: 
-      #       issue: "All volumes must be online"
-      #       details: "{{ offline_volumes }}"
-      #   when: offline_volumes | length > 0
-
-      # - name: Get any offline SVMs
-      #   ansible.builtin.set_fact: 
-      #     offline_svms: "{{ vserver_info | selectattr('state','!=','running') | list }}"
-
-      # - name: Fail playbook for any svm's not running
-      #   include_tasks: tasks/add_failure.yml
-      #   args:
-      #     apply:
-      #       tags: ["offline_objects"]
-      #   vars: 
-      #     failure: 
-      #       issue: "All SVMs must be online"
-      #       details: "{{ offline_svms }}"
-      #   when: offline_svms | length > 0
+      - include_tasks: tasks/health_checks/not_online.yml    
+        vars: 
+          online_object_check: "{{ item }}"
+        loop: "{{ check_for_not_online }}" 
 
       tags: ["not_online"]
 
