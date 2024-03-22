@@ -1,0 +1,49 @@
+---
+- name: Seemingly Lite Ranch   
+  hosts: "{{ ansible_limit }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    fail_threshold: 2
+    retry_pause: 10
+    lifs_to_test: []
+    lifs_that_passed: []
+    lifs_that_failed: []
+    lif_roles: ['data']
+  tasks:
+  - name: Get {{ lif_roles }} LIF(s) to ping tests
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars: 
+      gather_subset: 
+        - network/ip/interfaces
+      parameters:
+        enabled: true
+        state: up
+        fields: "\
+          location.home_node.name,location.home_port.name,location.port.name,\
+          location.is_home,location.node.name,ip.address"
+
+  - name: Set lifs_to_test fact
+    ansible.builtin.set_fact: 
+      lifs_to_test: "{{ ontap_rest_info['network/ip/interfaces'] }}"
+
+  # - name: Validate FQDN from the first mgmt LIF via nslookup
+  #   ansible.builtin.shell:  "nslookup {{ ontap_mgmt_lifs | first }}"
+  #   register: nslookup 
+
+  # - name: Log of nslookup
+  #   ansible.builtin.debug: 
+  #     var: nslookup.stdout 
+
+  - name: Let's see what we have going on mkay
+    ansible.builtin.debug:
+      var: lifs_to_test
