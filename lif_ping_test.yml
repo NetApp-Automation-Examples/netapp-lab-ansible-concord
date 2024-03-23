@@ -13,11 +13,11 @@
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
   vars: 
+    test_count: 2
     fail_threshold: 2
     ping_count: 5
-    retry_pause: 10
+    test_pause: 10
     lifs_to_test: []
-    lifs_that_passed: []
     lifs_that_failed: []
     # The basic role to services filter mapping is as follows: 
     #   -role data = data-core
@@ -25,6 +25,8 @@
     #   -role cluster-mgmt,node-mgmt = management-core
     #   -role intercluster = intercluster-core
     lif_services: ['data-core'] 
+    lif_fields: "location.home_node.name,location.home_port.name,location.port.name,\
+      location.is_home,location.node.name,ip.address"
   tasks:
   - name: Get {{ lif_roles }} LIF(s) to ping tests
     include_tasks: tasks/ontap_get_cluster_info_rest.yml
@@ -35,28 +37,34 @@
         enabled: true
         state: up
         services: "{{ lif_services | join(',') }}"
-        fields: "\
-          location.home_node.name,location.home_port.name,location.port.name,\
-          location.is_home,location.node.name,ip.address"
+        fields: "{{ lif_fields }}"
 
   - name: Set lifs_to_test fact
     ansible.builtin.set_fact: 
       lifs_to_test: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
 
-  - name: Do LIF ping tests 
+  - name: "For {{ lifs_to_test | length }} LIFs, `ping -c {{ ping_count }} <ip>` {{ test_count }} 
+        times with a pause of {{ test_pause }} seconds between runs"
     ansible.builtin.script: 
-      cmd: scripts/lif_ping_test.py {{ lifs_to_test | to_json | b64encode }} {{ ping_count}}
-    register: lif_ping_test 
+      cmd: "scripts/lif_ping_test.py {{ lifs_to_test | to_json | b64encode }} \ 
+          {{ ping_count }} {{ test_count }} {{ test_pause }}"
+         
+    register: lif_ping_test_return
 
-  - name: Print out lif_ping_test
-    ansible.builtin.debug: 
-      var: lif_ping_test
-  
-  # - name: Validate FQDN from the first mgmt LIF via nslookup
-  #   ansible.builtin.shell:  "nslookup {{ ontap_mgmt_lifs | first }}"
-  #   register: nslookup 
+  - name: Set lif_ping_test_results fact
+    ansible.builtin.set_fact: 
+      lif_ping_test_results: "{{ lif_ping_test_return.stdout }}"
 
-  # - name: Log of nslookup
-  #   ansible.builtin.debug: 
-  #     var: nslookup.stdout 
+  - name: Set lifs_that_failed fact
+    ansible.builtin.set_fact: 
+      lifs_that_failed: "{{ lif_ping_test_results | selectattr('failed_pings', 'ge', fail_threshold) }}"
 
+  - name: Fail playbook if any lif ping tests failed equal to 
+          or more than {{ fail_threshold }} times
+    ansible.builtin.fail: 
+      msg: |
+          The following LIFs failed the ping test at least {{ fail_threshold }} times: 
+          {% for lif in lifs_that_failed %}
+            - {{ lif.ip.address }} ({{ lif.name }}) failed {{ lif.failed_pings }} times
+          {% endfor %}
+    when: lifs_that_failed | length > 0
