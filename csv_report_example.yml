@@ -51,6 +51,8 @@
       ansible.builtin.template:
         src: "{{ csv_template }}"
         dest: "{{ csv_report }}"
+      vars: 
+        data_variable_name: volume_records
 
     run_once: true 
 
