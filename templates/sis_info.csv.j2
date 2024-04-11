@@ -1,0 +1,4 @@
+cluster,name,size,state,svm.name,type,error_state.is_inconsistent,efficiency.schedule,efficiency.compression,efficiency.dedupe,efficiency.policy.name,efficiency.compaction,efficiency.cross_volume_dedupe
+{% for h in ansible_play_hosts %}{% for volume in hostvars[h]['volume_records'] %}
+{{ h }},{{ volume.name }},{{ volume.size }},{{ volume.state }},{{ volume.svm.name }},{{ volume.type }},{{ volume.error_state.is_inconsistent }},{{ volume.efficiency.schedule }},{{ volume.efficiency.compression }},{{ volume.efficiency.dedupe }},{{ volume.efficiency.policy.name }},{{ volume.efficiency.compaction }},{{ volume.efficiency.cross_volume_dedupe }}
+{% endfor %}{% endfor %}

@@ -1,0 +1,60 @@
+---
+- name: Example of aggregating multiple cluster info into single csv file 
+  hosts: "{{ ansible_limit | default('localhost') }}"
+  gather_facts: yes
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:    
+    group/netapp.ontap.netapp_ontap:      
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    date: "{{ lookup('pipe', 'date +%Y%m%d-%H%M') }}"    
+    csv_template: "{{ inventory_dir}}/templates/sis_info.csv.j2"
+    csv_dir: "{{ inventory_dir }}/csv"
+    csv_file_name: "sis_info_report-{{ date }}.csv"
+    csv_report: "{{ csv_dir }}/{{ csv_file_name }}"
+    volume_fields_multiline: >
+        name,size,state,svm.name,type,error_state.is_inconsistent,
+        efficiency.schedule,efficiency.compression,efficiency.dedupe,
+        efficiency.policy.name,efficiency.compaction,
+        efficiency.cross_volume_dedupe
+    volume_fields: "{{ volume_fields_multiline | split | join }}"
+  tasks:
+  - name: Collect Volume details
+    netapp.ontap.na_ontap_restit:
+      api: /storage/volumes
+      method: GET
+      query:
+        type: "!ls"
+        is_svm_root: false
+        fields: "{{ volume_fields }}"
+    register: volume_response
+
+  - name: Set volume_records fact
+    ansible.builtin.set_fact:
+      volume_records: "{{ volume_response.response.records }}"
+ 
+  - name: Populate report .csv 
+    block: 
+    - name: Ensure dir exists
+      ansible.builtin.file:
+        path: "{{ csv_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Loop through each cluster's volume_records to populate CSV
+      ansible.builtin.template:
+        src: "{{ csv_template }}"
+        dest: "{{ csv_report }}"
+
+    run_once: true 
+
+       
+    
+
+ 
