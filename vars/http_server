@@ -1,5 +1,5 @@
 upgrade_files_path: upgrade_files/
 http_server_path: /usr/share/nginx/files
-http_server_port: 8500
-http_server_host: awx.demo.netapp.com
+http_server_port: 8080
+http_server_host: 192.168.0.5
 http_server_url: "http://{{ http_server_host }}:{{ http_server_port }}"

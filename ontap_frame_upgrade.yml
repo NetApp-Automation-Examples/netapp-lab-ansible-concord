@@ -1,0 +1,172 @@
+---
+- name: Pre/Post framing of ONTAP Upgrade
+  hosts: "{{ ansible_limit }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  vars_files: 
+    - http_server
+  vars:
+    ontap_image: 9101P15_q_image.tgz
+    ontap_package_version: 9.10.1P15
+    ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
+    pre_upgrade: True
+    validation_warnings: []
+    validation_warnings_to_ignore: 
+      - Manual checks
+    auto_support_action_label: "{{ 'Kick off' if pre_upgrade | default('End') }}" 
+    autogiveback_action_label: "{{ 'Disable' if pre_upgrade | default('Enable') }}"
+
+  module_defaults:    
+    group/netapp.ontap.netapp_ontap:      
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+
+  tasks:
+  - name: Check what current image(s) are there
+    block: 
+    - name: Log of target ONTAP Package download URL and version
+      debug: 
+        msg: "{{ ontap_package_version }} - {{ ontap_package_url }}"
+      run_once: true
+
+    - name: Ping download URL
+      uri: 
+        url: "{{ ontap_package_url }}"
+        method: HEAD
+        return_content: no
+      register: ontap_package_url_head
+      run_once: true
+
+    - name: Fail playbook if ontap package can't be reached 
+      ansible.builtin.fail: 
+        msg: "{{ ontap_package_url }} is not reachable. See: {{ ontap_package_url_head }}"
+      when: ontap_package_url_head.status != 200
+      run_once: true
+
+    - name: Check for package already being there
+      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      # args:
+      #   apply:
+      #     tags: ["always"]
+      vars: 
+        gather_subset: 
+          - cluster/software/packages
+        parameters: 
+          version: "{{ ontap_package_version }}"
+    
+    - name: Log of current packages 
+      ansible.builtin.debug: 
+        var: ontap_rest_info['cluster/software/packages']['records'] 
+    
+    tags: ["image", "upload_check"]
+    when: pre_upgrade
+
+  - name: Upload {{ ontap_image }} to the cluster, if not present already
+    block: 
+
+    - name: Upload {{ ontap_image }} to the cluster. This could take several minutes. 
+      netapp.ontap.na_ontap_software_update:
+        <<: *login
+        state: present
+        package_url: "{{ ontap_package_url }}"
+        package_version: "{{ ontap_package_version }}"
+        download_only: True
+      register: ontap_image_upload
+    
+    - name: Log of ontap_image_upload
+      ansible.builtin.debug: 
+        var: ontap_image_upload
+
+    when: ontap_package_version not in ontap_rest_info['cluster/software/packages']['records'] | map(attribute='version') | list
+    tags:
+      - upload
+      - image
+
+  - name: "Validate ONTAP Software update to {{ ontap_package_version }}"
+    block: 
+    - name: Get validation warnings to ensure there aren't any we don't expect 
+      netapp.ontap.na_ontap_restit:
+        <<: *login
+        api: cluster/software
+        method: PATCH
+        body:  
+          validate_only: true
+          version: "{{ ontap_package_version }}"
+      register: start_upgrade_validation
+ 
+    - name: Log of start_upgrade_validation
+      ansible.builtin.debug: 
+        var: start_upgrade_validation
+
+    - name: Get validation results once they are finished
+      netapp.ontap.na_ontap_restit:
+        <<: *login
+        api: cluster/software
+        method: GET
+      register: upgrade_validation_results
+      until: upgrade_validation_results.response.validation_results is defined
+      retries: 100
+      delay: 10
+
+    - name: Log of upgrade_validation_results
+      ansible.builtin.debug: 
+        var: upgrade_validation_results
+
+    - name: "Check for warnings beyond what we are expecting {{ validation_warnings_to_ignore | join(',') }}"
+      ansible.builtin.set_fact:
+        validation_warnings: "{{ validation_warnings + [item] }}"
+      loop: "{{ upgrade_validation_results.response.validation_results }}"
+      when: item.update_check not in validation_warnings_to_ignore
+
+    - name: Log of validation warnings
+      debug:
+        msg: "{{ validation_warnings }}"
+
+    - name: Prompt for review if there are validation warnings that we don't expect
+      ansible.builtin.pause:
+        prompt: "Please review the results of cluster upgrade validation and press 
+                  ENTER to continue with the upgrade. To abort upgrade, hit ctrl+c and then 'A':
+                  \n\n----------------------------------------------\n\n
+                  {% for warning in validation_warnings %}
+                    {{ warning.status }}: \n{{ warning.issue.message }}\n\n
+                    {{ warning.action.message }}
+                    \n\n----------------------------------------------\n\n
+
+                  {% endfor %}"
+      when: validation_warnings | length > 0
+    tags: ["validate"]
+    when: pre_upgrade
+      
+  # TODO adjust block for pre/post upgrade 
+  - name: "{{ auto_support_action_label }} autosupports and {{ autogiveback_action_label }} autogivebacks"
+    block: 
+    - name: Get number of nodes
+      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      vars: 
+        gather_subset: 
+          - cluster/nodes
+    
+    - name: Set maint_hours based on number of nodes
+      ansible.builtin.set_fact:
+        maint_hours: "{{ (1.5 * ontap_rest_info['cluster/nodes']['num_records'] | int) | round | int }}"
+
+      # https://kb.netapp.com/onprem/ontap/os/How_to_suppress_automatic_case_creation_during_scheduled_maintenance_windows_-_ONTAP_9
+    - name: Kick off autosupports (-type all -message "MAINT={{ maint_hours }}h Starting Non-Disruptive Upgrade to {{ ontap_package_version }}"
+      na_ontap_autosupport_invoke:
+        autosupport_message: "MAINT={{ maint_hours }}h Starting Non-Disruptive Upgrade to {{ ontap_package_version }}"
+        type: all
+
+    - name: End maintenance autosupports (-type all -message "MAINT=END Completed ANDU {{ ontap_package_version }}"
+      na_ontap_autosupport_invoke:
+        autosupport_message: "MAINT=END Completed ANDU {{ ontap_package_version }}"
+        type: all
+
+    tags: 
+      - autosupport_autogivebacks
+      
+       
