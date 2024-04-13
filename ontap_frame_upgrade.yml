@@ -11,12 +11,15 @@
     ontap_image: 9101P15_q_image.tgz
     ontap_package_version: 9.10.1P15
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
+    # pre or post are the 
     pre_upgrade: True
     validation_warnings: []
     validation_warnings_to_ignore: 
       - Manual checks
+    autosupport_message: "MAINT=END Completed ANDU {{ ontap_package_version }}"
     auto_support_action_label: "{{ 'Kick off' if pre_upgrade | default('End') }}" 
     autogiveback_action_label: "{{ 'Disable' if pre_upgrade | default('Enable') }}"
+    autogiveback: "{{ 'true' if not pre_upgrade else 'false' | string }}"
 
   module_defaults:    
     group/netapp.ontap.netapp_ontap:      
@@ -27,6 +30,11 @@
       validate_certs: "{{ validate_certs }}"
 
   tasks:
+  - name: Log of pre_upgrade var
+    ansible.builtin.debug: 
+      msg: "pre_upgrade is set to {{ pre_upgrade }}. If it is set to true, the pre upgrade tasks will run. If it is set to false, the post upgrade tasks will run"
+    tags: always
+
   - name: Check what current image(s) are there
     block: 
     - name: Log of target ONTAP Package download URL and version
@@ -71,7 +79,6 @@
 
     - name: Upload {{ ontap_image }} to the cluster. This could take several minutes. 
       netapp.ontap.na_ontap_software_update:
-        <<: *login
         state: present
         package_url: "{{ ontap_package_url }}"
         package_version: "{{ ontap_package_version }}"
@@ -91,7 +98,6 @@
     block: 
     - name: Get validation warnings to ensure there aren't any we don't expect 
       netapp.ontap.na_ontap_restit:
-        <<: *login
         api: cluster/software
         method: PATCH
         body:  
@@ -105,7 +111,6 @@
 
     - name: Get validation results once they are finished
       netapp.ontap.na_ontap_restit:
-        <<: *login
         api: cluster/software
         method: GET
       register: upgrade_validation_results
@@ -142,31 +147,67 @@
     tags: ["validate"]
     when: pre_upgrade
       
-  # TODO adjust block for pre/post upgrade 
-  - name: "{{ auto_support_action_label }} autosupports and {{ autogiveback_action_label }} autogivebacks"
+  - name: "{{ auto_support_action_label }} autosupports"
     block: 
-    - name: Get number of nodes
-      include_tasks: tasks/ontap_get_cluster_info_rest.yml
-      vars: 
-        gather_subset: 
-          - cluster/nodes
-    
-    - name: Set maint_hours based on number of nodes
-      ansible.builtin.set_fact:
-        maint_hours: "{{ (1.5 * ontap_rest_info['cluster/nodes']['num_records'] | int) | round | int }}"
+    - name: Kick off autosupports
+      block: 
+      - name: Get number of nodes
+        include_tasks: tasks/ontap_get_cluster_info_rest.yml
+        vars: 
+          gather_subset: 
+            - cluster/nodes
+      
+      - name: Set maint_hours based on number of nodes
+        ansible.builtin.set_fact:
+          maint_hours: "{{ (1.5 * ontap_rest_info['cluster/nodes']['num_records'] | int) | round | int }}"
+      
+      - name: Override autosupport_message
+        ansible.builtin.set_fact:
+          autosupport_message: >
+            MAINT={{ maint_hours }}h Starting Non-Disruptive Upgrade to {{ ontap_package_version }}
+      when: pre_upgrade
 
       # https://kb.netapp.com/onprem/ontap/os/How_to_suppress_automatic_case_creation_during_scheduled_maintenance_windows_-_ONTAP_9
-    - name: Kick off autosupports (-type all -message "MAINT={{ maint_hours }}h Starting Non-Disruptive Upgrade to {{ ontap_package_version }}"
+    - name: "{{ auto_support_action_label }} maintenance autosupports (-type all -message '{{ autosupport_message }}'"
       na_ontap_autosupport_invoke:
-        autosupport_message: "MAINT={{ maint_hours }}h Starting Non-Disruptive Upgrade to {{ ontap_package_version }}"
+        autosupport_message: "{{ autosupport_message }}"
         type: all
 
-    - name: End maintenance autosupports (-type all -message "MAINT=END Completed ANDU {{ ontap_package_version }}"
-      na_ontap_autosupport_invoke:
-        autosupport_message: "MAINT=END Completed ANDU {{ ontap_package_version }}"
-        type: all
+    tags: ["autosupport"]
 
-    tags: 
-      - autosupport_autogivebacks
-      
+  - name: "{{ autogiveback_action_label }} autogiveback"
+    block: 
+    - name: Log of autogiveback 
+      ansible.builtin.debug: 
+        var: autogiveback
+
+    - name: Update auto-giveback on all nodes (`storage failover modify -auto-giveback {{ autogiveback }} -nodes *`)  
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'storage/failover'
+        params:   
+          node: "*"
+        body: 
+          auto-giveback: "{{ autogiveback }}"
+        verb: "PATCH"
+      register: update_autogiveback 
+
+    - name: "Log of update_autogiveback"
+      ansible.builtin.debug: 
+        var: update_autogiveback
+
+    - name: Get auto-giveback status after update command
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'storage/failover'
+        params: 
+          fields: 'auto-giveback'
+        verb: "GET"
+      register: confirm_autogiveback
+
+    - name: Confirm auto-giveback status is set to {{ autogiveback }}
+      ansible.builtin.debug: 
+        var: confirm_autogiveback
+
+
+    tags: ["autogiveback"]
+
        
