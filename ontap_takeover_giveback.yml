@@ -1,0 +1,122 @@
+---
+- name: Takeover/giveback of a given node for each cluster
+  hosts: "{{ ansible_limit }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  vars:
+    failover_warnings: []
+    failover_warnings_to_ignore: []
+    nodes: 
+      cluster1: cluster1-01
+      cluster2: cluster2-01
+    node: "{{ nodes[inventory_hostname] if inventory_hostname in nodes else '' }}"
+    node_query:
+      fields: "uptime,state,ha,version"
+    lif_query: 
+      fields: "location,state"
+
+  module_defaults:    
+    group/netapp.ontap.netapp_ontap:      
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+
+  tasks:
+  - name: Log of nodes
+    ansible.builtin.debug:
+      msg: "nodes = {{ nodes }} and node = {{ node }}"
+  
+  - name: End playbook for host if no node found
+    ansible.builtin.meta: end_host
+    when: node == ''
+
+  - name: Get node info
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars:
+      gather_subset:
+      - cluster/nodes
+      parameters:
+        name: "{{ node }}"
+        fields: "{{ node_query.fields }}"
+
+  - name: Set node info fact
+    ansible.builtin.set_fact:
+      node_info: "{{ ontap_rest_info['cluster/nodes']['records'] | first }}"
+  
+  - name: Log of current uptime and os version 
+    ansible.builtin.debug:
+      msg: "{{ node_info.name }} up for {{ node_info.uptime }} and currently at {{ node_info.version.full }}"
+
+  - name: Get all LIFs on the node
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars:
+      gather_subset:
+      - network/ip/interfaces
+      parameters:
+        location.node.name: "{{ node }}"
+        fields: "{{ lif_query.fields }}"
+
+  - name: Set node_lifs fact
+    ansible.builtin.set_fact: 
+      node_lifs: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
+
+  - name: Log node_lifs 
+    ansible.builtin.debug: 
+      var: node_lifs
+
+  # - net int migrate-all -node < node>
+  - name: Migrate all lifs off of the node in preparation for takeover
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'network/interface/migrate-all'
+      body: 
+        node: "{{ node }}"
+      verb: "POST"
+    register: net_int_migrate_all
+
+  - name: Log
+    ansible.builtin.debug: 
+      var: net_int_migrate_all
+
+  # - net int show -fields home-node,curr-node,curr-port,home-port,status-admin,status-oper -home-node ‹node>
+
+
+# - storage failover takeover -ofnode ‹node>
+# - storage failover show
+# Fail back - Once status of the storage failover show command says "Waiting for giveback" perform the following steps
+# - storage failover giveback -ofnode < node>
+# - storage failover show-giveback
+# Validate ports are up and revert lifs
+# - net port show -node ‹node >
+# - net int revert +
+# - net int show -fields home-node,curr-node,curr-port,home-port,status-admin,status-oper -home-node ‹node>
+
+    # - name: Log of failover_warning_results
+    #   ansible.builtin.debug: 
+    #     var: failover_warning_results
+
+    # - name: "Check for warnings beyond what we are expecting {{ failover_warnings_to_ignore | join(',') }}"
+    #   ansible.builtin.set_fact:
+    #     failover_warnings: "{{ failover_warnings + [item] }}"
+      #loop: "{{ failover_warning_results.response.validation_results }}"
+      #when: item.update_check not in validation_warnings_to_ignore
+
+    # - name: Log of failover_warnings
+    #   debug:
+    #     msg: "{{ failover_warnings }}"
+
+    # - name: Prompt for review if there are validation warnings that we don't expect
+    #   ansible.builtin.pause:
+    #     prompt: "Please review the results of cluster upgrade validation and press 
+    #               ENTER to continue with the upgrade. To abort upgrade, hit ctrl+c and then 'A':
+    #               \n\n----------------------------------------------\n\n
+    #               {% for warning in validation_warnings %}
+    #                 {{ warning.status }}: \n{{ warning.issue.message }}\n\n
+    #                 {{ warning.action.message }}
+    #                 \n\n----------------------------------------------\n\n
+
+    #               {% endfor %}"
+    #   when: validation_warnings | length > 0
