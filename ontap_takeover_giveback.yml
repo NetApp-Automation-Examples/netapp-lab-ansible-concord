@@ -6,6 +6,8 @@
   collections:
     - netapp.ontap
   vars:
+    failover_status_retries: 10
+    failover_status_delay: 30
     failover_warnings: []
     failover_warnings_to_ignore: []
     nodes: 
@@ -46,51 +48,155 @@
   - name: Set node info fact
     ansible.builtin.set_fact:
       node_info: "{{ ontap_rest_info['cluster/nodes']['records'] | first }}"
-  
-  - name: Log of current uptime and os version 
-    ansible.builtin.debug:
-      msg: "{{ node_info.name }} up for {{ node_info.uptime }} and currently at {{ node_info.version.full }}"
 
-  # - net int migrate-all -node < node>
-  - name: Migrate all lifs off of the node in preparation for takeover (net int migrate-all -node <node>)
-    netapp.ontap.na_ontap_rest_cli: 
-      command: 'network/interface/migrate-all'
-      body: 
-        node: "{{ node }}"
-      verb: "POST"
-    register: net_int_migrate_all
+  - name: Set node_state 
+    ansible.builtin.set_fact:
+      node_state: "{{ node_info.state }}"
 
-  - name: After the LIF migrate command, get all LIFs with the home node set to <node>
-    include_tasks: tasks/ontap_get_cluster_info_rest.yml
-    vars:
-      gather_subset:
-      - network/ip/interfaces
-      parameters:
-        location.home_node.name: "{{ node }}"
-        fields: "{{ lif_query.fields }}"
+  - name: Get HA Partner info 
+    netapp.ontap.na_ontap_restit:
+      api: cluster/nodes/{{ node_info.ha.partners.0.uuid }}
+      query:
+        fields: "state,ha"
+    register: get_ha_partner
 
-  - name: Set node_lifs fact
+  - name: Set node_ha_partner
+    ansible.builtin.set_fact:
+      ha_partner: "{{ get_ha_partner.response }}" 
+
+  - name: Set in_takeover 
+    ansible.builtin.set_fact:
+      in_takover: True
+    when: node_state in ['taken_over','waiting_for_giveback'] 
+          and ha_partner.ha.takeover.state in ['in_progress','in_takeover']
+
+  - name: Set doing_giveback
+    ansible.builtin.set_fact:
+      doing_giveback: True
+    when: node_state in ['booting','degraded','waiting_for_giveback'] 
+          and ha_partner.ha.giveback.state in ['in_progress']
+
+  - name: Set ready_for_takeover
     ansible.builtin.set_fact: 
-      node_lifs: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
+      ready_for_takeover: True
+    when: node_state == 'up' 
+          and ha_partner.ha.giveback.state in ['nothing_to_giveback', 'not_attempted']
+          and ha_partner.ha.takeover.state == 'not_attempted'
 
-  - name: Log node_lifs
+  - name: Log of current uptime, os version, and failover state 
+    ansible.builtin.debug:
+      msg: |
+        {{ node_info.name }} (HA partner is {{ node_info.ha.partners | map(attribute='name') }}) 
+        uptime = {{ node_info.uptime if node_info.uptime is defined else '0' }} 
+        version = at {{ node_info.version.full }} 
+        state = {{ node_info.state }} 
+        partner state = {{ ha_partner.state }}
+        partner takeover = {{ ha_partner.ha.takeover }}
+        partner giveback = {{ ha_partner.ha.giveback }}
+        in_takeover = {{ in_takeover if in_takeover is defined }}
+        doing_giveback = {{ doing_giveback if doing_giveback is defined }}
+        ready_for_takeover = {{ ready_for_takeover if ready_for_takeover is defined }}
+    
+  
+  - name: End
+    meta: end_play
+
+  - name: Migrate all lifs and initiate takeover
+    block: 
+    - name: net int migrate-all -node <node> 
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'network/interface/migrate-all'
+        body: 
+          node: "{{ node }}"
+        verb: "POST"
+      register: net_int_migrate_all
+
+    - name: After the LIF migrate command, get all LIFs with the home node set to <node>
+      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      vars:
+        gather_subset:
+        - network/ip/interfaces
+        parameters:
+          location.home_node.name: "{{ node }}"
+          fields: "{{ lif_query.fields }}"
+
+    - name: Set node_lifs fact
+      ansible.builtin.set_fact: 
+        node_lifs: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
+
+    - name: Log node_lifs
+      ansible.builtin.debug: 
+        msg: >
+          {% for l in node_lifs %}
+            {{ l.name +' is '+l.state|upper+' at '+l.location.node.name }}{{ ' (home is '+l.location.home_node.name+')' if l.location.is_home == false }}
+          {% endfor %} 
+    
+    - name: storage failover takeover -ofnode <node> 
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'storage/failover/takeover'
+        body: 
+          ofnode: "{{ node }}"
+        verb: "POST"
+      register: takeover
+
+    - name: Check failover status until we get "waiting for giveback"
+      netapp.ontap.na_ontap_restit:
+        api: cluster/nodes/{{ node_info.uuid }}
+        query:
+          fields: "state,ha"
+      register: takeover_status
+      until: takeover_status.response.state == 'waiting_for_giveback'
+      retries: "{{ failover_status_retries }}"
+      delay: "{{ failover_status_delay }}" 
+    when: node_state == 'up' 
+
+  - name: Check giveback status of primary
+    netapp.ontap.na_ontap_restit:
+      api: cluster/nodes/{{ node_info.uuid }}
+      query:
+        fields: "state,ha"
+    register: giveback_status
+
+  - name: Check giveback status of partner
+    netapp.ontap.na_ontap_restit:
+      api: cluster/nodes/{{ node_info.ha.partners.0.uuid }}
+      query:
+        fields: "state,ha"
+    register: partner_giveback_status
+
+  - name: log primary
     ansible.builtin.debug: 
-      msg: >
-        {% for l in node_lifs %}
-          {{ l.name +' is '+l.state|upper+' at '+l.location.node.name }}{{ ' (home is '+l.location.home_node.name+')' if l.location.is_home == false }}
-        {% endfor %} 
-  
-  - name: storage failover takeover -ofnode <node> 
-    netapp.ontap.na_ontap_rest_cli: 
-      command: 'storage/failover/takeover'
-      body: 
-        ofnode: "{{ node }}"
-      verb: "POST"
-    register: takeover
-  
-  #- name: Poll storage failover show-takeover until ready for giveback 
-  
-# Fail back - Once status of the storage failover show command says "Waiting for giveback" perform the following steps
+      var: giveback_status
+
+  - name: log partner
+    ansible.builtin.debug: 
+      var: partner_giveback_status
+ 
+  # - name: Do the giveback
+  #   block: 
+  #   - name: storage failover giveback -ofnode <node>
+  #     netapp.ontap.na_ontap_rest_cli: 
+  #       command: 'storage/failover/giveback'
+  #       body: 
+  #         ofnode: "{{ node }}"
+  #       verb: "POST"
+  #     register: giveback
+    
+  #   - name: Check giveback status until we get "up"
+  #     netapp.ontap.na_ontap_restit:
+  #       api: cluster/nodes/{{ node_info.uuid }}
+  #       query:
+  #         fields: "state,ha.giveback.state"
+  #     register: giveback_status
+  #     until: giveback_status.response.state == 'up'
+  #     retries: "{{ failover_status_retries }}"
+  #     delay: "{{ failover_status_delay }}" 
+
+  #   when: node_state == 'waiting_for_giveback' or takeover_status is defined
+
+
+
+
 # - storage failover giveback -ofnode < node>
 # - storage failover show-giveback
 # Validate ports are up and revert lifs
