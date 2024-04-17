@@ -51,25 +51,8 @@
     ansible.builtin.debug:
       msg: "{{ node_info.name }} up for {{ node_info.uptime }} and currently at {{ node_info.version.full }}"
 
-  - name: Get all LIFs on the node
-    include_tasks: tasks/ontap_get_cluster_info_rest.yml
-    vars:
-      gather_subset:
-      - network/ip/interfaces
-      parameters:
-        location.node.name: "{{ node }}"
-        fields: "{{ lif_query.fields }}"
-
-  - name: Set node_lifs fact
-    ansible.builtin.set_fact: 
-      node_lifs: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
-
-  - name: Log node_lifs 
-    ansible.builtin.debug: 
-      var: node_lifs
-
   # - net int migrate-all -node < node>
-  - name: Migrate all lifs off of the node in preparation for takeover
+  - name: Migrate all lifs off of the node in preparation for takeover (net int migrate-all -node <node>)
     netapp.ontap.na_ontap_rest_cli: 
       command: 'network/interface/migrate-all'
       body: 
@@ -77,15 +60,36 @@
       verb: "POST"
     register: net_int_migrate_all
 
-  - name: Log
+  - name: After the LIF migrate command, get all LIFs with the home node set to <node>
+    include_tasks: tasks/ontap_get_cluster_info_rest.yml
+    vars:
+      gather_subset:
+      - network/ip/interfaces
+      parameters:
+        location.home_node.name: "{{ node }}"
+        fields: "{{ lif_query.fields }}"
+
+  - name: Set node_lifs fact
+    ansible.builtin.set_fact: 
+      node_lifs: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
+
+  - name: Log node_lifs
     ansible.builtin.debug: 
-      var: net_int_migrate_all
-
-  # - net int show -fields home-node,curr-node,curr-port,home-port,status-admin,status-oper -home-node ‹node>
-
-
-# - storage failover takeover -ofnode ‹node>
-# - storage failover show
+      msg: >
+        {% for l in node_lifs %}
+          {{ l.name +' is '+l.state|upper+' at '+l.location.node.name }}{{ ' (home is '+l.location.home_node.name+')' if l.location.is_home == false }}
+        {% endfor %} 
+  
+  - name: storage failover takeover -ofnode <node> 
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'storage/failover/takeover'
+      body: 
+        ofnode: "{{ node }}"
+      verb: "POST"
+    register: takeover
+  
+  #- name: Poll storage failover show-takeover until ready for giveback 
+  
 # Fail back - Once status of the storage failover show command says "Waiting for giveback" perform the following steps
 # - storage failover giveback -ofnode < node>
 # - storage failover show-giveback
