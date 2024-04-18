@@ -1,0 +1,18 @@
+- name: Get all LIFs with the home node set to <node>
+  netapp.ontap.na_ontap_restit:
+    api: network/ip/interfaces
+    query:
+      location.home_node.name: "{{ node }}"
+      fields: "*"
+  register: get_node_lifs
+
+- name: Set node_lifs fact
+  ansible.builtin.set_fact: 
+    node_lifs: "{{ get_node_lifs.response.records }}"
+
+- name: Log node_lifs
+  ansible.builtin.debug: 
+    msg: >
+     {% for l in node_lifs %}
+       {{ l.name +' is '+l.state|upper+' at '+l.location.node.name }}{{ ' (home is '+l.location.home_node.name+')' if l.location.is_home == false }}
+     {% endfor %} 
