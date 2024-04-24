@@ -13,9 +13,12 @@
     ontap_package_version: 9.10.1P15
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
     validation_warnings: []
+    node_image_update_failure_text: "Failed"
     validation_warnings_to_ignore: 
       - Manual checks
-
+      - SAN compatibility
+      - NFS mounts
+      - CIFS status
   module_defaults:    
     group/netapp.ontap.netapp_ontap:      
       hostname: "{{ ontap_hostname }}"
@@ -133,6 +136,49 @@
                   {% endfor %}"
       when: validation_warnings | length > 0
     tags: ["validate"]
+
+  - name: Get the image into each node's package repo
+    block:
+    - name: >
+        "system node image update -node * -background true -package {{ ontap_package_url }} -replace-package true"
+      block: 
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'system/node/image/update'
+          params: 
+            node: "*"
+          body:   
+            package: "{{ ontap_package_url }}"
+            replace-package: true
+            background: true
+          verb: "PATCH"
+        register: node_image_upload 
+
+      - name: "Log of node_image_upload"
+        ansible.builtin.debug: 
+          var: node_image_upload
+      rescue: 
+        - name: Test
+          ansible.builtin.debug: 
+            msg: "Hello?"
+
+    - name: >
+        Check on status until success
+        system node image show-update-progress
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'system/node/image/show-update-progress'
+        verb: "POST"
+      register: node_image_upload_progress
+      
+    - name: 
+      ansible.builtin.debug: 
+        var: node_image_upload_progress
+
+    - name: "Fail playbook if '{{ node_image_update_failure_text }}' is found in command return"
+      ansible.builtin.fail: 
+        msg: "{{ node_image_upload_progress.msg.cli_output }}"
+      when: node_image_update_failure_text in node_image_upload_progress.msg.cli_output
+    
+    tags: ["image", "upload_to_nodes"]
 
   - name: "Disable autogiveback"
     block: 
