@@ -155,7 +155,7 @@
     - name: Build list of versions per node
       ansible.builtin.set_fact: 
         nodes_with_new_package: "{{ current_node_images | selectattr('version', 'equalto', ontap_package_version) }}" 
-      
+
     - name: "Build list of nodes without {{ ontap_package_version }}"
       ansible.builtin.set_fact: 
         nodes_need_new_image: "{{ nodes_need_new_image | default([]) + [item] }}"
@@ -205,6 +205,46 @@
       when: nodes_need_new_image is defined 
 
     tags: ["image", "upload_to_nodes"]
+
+  - name: Set node images to {{ ontap_package_version }}
+    block: 
+    - name: Get image name for {{ ontap_package_version }}
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'system/node/image'
+        params: 
+          fields: "image"
+          version: "{{ ontap_package_version }}"
+        verb: "GET"
+      register: node_image_new_package
+
+    - name: Set new_image_name
+      ansible.builtin.set_fact: 
+        new_image_name: "{{ (node_image_new_package.msg.records | first).image }}"
+
+    - name: system image modify -node * -image {{ new_image_name }} -isdefault true
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'system/node/image'
+        params: 
+          node: "*"
+          image: "{{ new_image_name }}"
+        body: 
+          isdefault: true 
+        verb: "PATCH"
+      register: set_new_node_image
+
+    - name: Confirm {{ new_image_name }} {{ ontap_package_version }} is set to default
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'system/node/image'
+        params: 
+          fields: "image,node,version,version,isdefault,iscurrent"
+        verb: "GET"
+      register: verify_node_image_set
+
+    - name: Log of verify_node_image_set
+      ansible.builtin.debug: 
+        var: verify_node_image_set
+
+    tags: ["image", "set_node_image"]
 
   - name: "Disable autogiveback"
     block: 
