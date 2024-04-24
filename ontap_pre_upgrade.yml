@@ -139,9 +139,37 @@
 
   - name: Get the image into each node's package repo
     block:
-    - name: >
-        "system node image update -node * -background true -package {{ ontap_package_url }} -replace-package true"
-      block: 
+    - name: Check to see if the package has already been uploaded
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'system/node/image'
+        params: 
+          fields: "image,node,version"
+        verb: "GET"
+      register: node_image_show
+
+    - name: Set current_node_images
+      ansible.builtin.set_fact: 
+        current_node_images: "{{ node_image_show.msg.records }}"
+        nodes_list: "{{ node_image_show.msg.records | map(attribute='node') | unique }}"
+
+    - name: Build list of versions per node
+      ansible.builtin.set_fact: 
+        nodes_with_new_package: "{{ current_node_images | selectattr('version', 'equalto', ontap_package_version) }}" 
+      
+    - name: "Build list of nodes without {{ ontap_package_version }}"
+      ansible.builtin.set_fact: 
+        nodes_need_new_image: "{{ nodes_need_new_image | default([]) + [item] }}"
+      loop: "{{ nodes_list }}"
+      when: item not in nodes_with_new_package | map(attribute="node")
+
+    - block: 
+      - name: log of nodes_need_new_image
+        ansible.builtin.debug:
+          var: nodes_need_new_image
+        when: nodes_need_new_image is defined
+
+      - name: >
+          "system node image update -node * -background true -package {{ ontap_package_url }} -replace-package true"
         netapp.ontap.na_ontap_rest_cli: 
           command: 'system/node/image/update'
           params: 
@@ -156,28 +184,26 @@
       - name: "Log of node_image_upload"
         ansible.builtin.debug: 
           var: node_image_upload
-      rescue: 
-        - name: Test
-          ansible.builtin.debug: 
-            msg: "Hello?"
 
-    - name: >
-        Check on status until success
-        system node image show-update-progress
-      netapp.ontap.na_ontap_rest_cli: 
-        command: 'system/node/image/show-update-progress'
-        verb: "POST"
-      register: node_image_upload_progress
+      - name: >
+          Check on status until success
+          system node image show-update-progress
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'system/node/image/show-update-progress'
+          verb: "POST"
+        register: node_image_upload_progress
+        
+      - name: 
+        ansible.builtin.debug: 
+          var: node_image_upload_progress
+
+      - name: "Fail playbook if '{{ node_image_update_failure_text }}' is found in command return"
+        ansible.builtin.fail: 
+          msg: "{{ node_image_upload_progress.msg.cli_output }}"
+        when: node_image_update_failure_text in node_image_upload_progress.msg.cli_output
       
-    - name: 
-      ansible.builtin.debug: 
-        var: node_image_upload_progress
+      when: nodes_need_new_image is defined 
 
-    - name: "Fail playbook if '{{ node_image_update_failure_text }}' is found in command return"
-      ansible.builtin.fail: 
-        msg: "{{ node_image_upload_progress.msg.cli_output }}"
-      when: node_image_update_failure_text in node_image_upload_progress.msg.cli_output
-    
     tags: ["image", "upload_to_nodes"]
 
   - name: "Disable autogiveback"
