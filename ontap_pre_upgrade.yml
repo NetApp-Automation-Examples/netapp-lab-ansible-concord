@@ -37,7 +37,7 @@
   - name: Set nodes_list and nodes_info 
     ansible.builtin.set_fact:
       nodes_info: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
-      nodes_count: "{{ {{ ontap_rest_info['cluster/nodes']['num_recoreds'] }}"
+      nodes_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
       nodes_list: "{{ ontap_rest_info['cluster/nodes']['records'] | map(attribute='name') }}"
  
 
