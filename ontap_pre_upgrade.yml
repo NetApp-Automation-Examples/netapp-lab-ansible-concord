@@ -240,9 +240,25 @@
         verb: "GET"
       register: verify_node_image_set
 
-    - name: Log of verify_node_image_set
-      ansible.builtin.debug: 
-        var: verify_node_image_set
+    - name: >
+        Set new_package_is_default
+        verify_node_image_set -> filter by image == {{ new_image_name }} -> map by isdefault -> remove duplicates 
+      ansible.builtin.set_fact: 
+        new_package_is_default: "{{ verify_node_image_set.msg.records | 
+            selectattr('image', 'equalto', new_image_name) | 
+            map(attribute='isdefault') | unique }}"
+        nodes_list: "{{ verify_node_image_set.msg.records | map(attribute='node') | unique }}"
+
+    - name: log   
+      ansible.builtin.debug:
+        var: new_package_is_default
+
+    - name: Fail playbook if {{ new_image_name }} isn't set to default on every node
+      ansible.builtin.fail:
+        msg: "{{ new_image_name }} must be set as the default image for all nodes"
+      when: true not in new_package_is_default or new_package_is_default | length > 1
+
+            
 
     tags: ["image", "set_node_image"]
 
