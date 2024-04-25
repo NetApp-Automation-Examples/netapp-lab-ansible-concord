@@ -10,6 +10,8 @@
     #failover_check_only: True
     failover_status_retries: 10
     failover_status_delay: 30
+    # THe official reccomendation is 8 minutes 
+    pause_in_seconds_between_takeover_giveback: 480
     failover_vetoes: []
     failover_vetoes_to_ignore: []
     takeover_option: "normal"
@@ -59,7 +61,6 @@
 
   - name: Get HA Partner info 
     block: 
-
     - netapp.ontap.na_ontap_restit:
         api: cluster/nodes/{{ node_info.ha.partners.0.uuid }}
         query:
@@ -149,19 +150,25 @@
     when: at_stasis is defined 
 
   - name: Check takeover status until we get "waiting for giveback"
-    netapp.ontap.na_ontap_restit:
-      api: cluster/nodes/{{ node_info.uuid }}
-      query:
-        fields: "state,ha"
-    register: takeover_status
-    until: takeover_status.response.state is defined 
-            and takeover_status.response.state == 'waiting_for_giveback'
-    retries: "{{ failover_status_retries }}"
-    delay: "{{ failover_status_delay }}" 
+    block: 
+    - name: /cluster/nodes/{{ node_info.uuid }}?fields=state,ha until state is waiting_for_giveback
+      netapp.ontap.na_ontap_restit:
+        api: cluster/nodes/{{ node_info.uuid }}
+        query:
+          fields: "state,ha"
+      register: takeover_status
+      until: takeover_status.response.state is defined 
+              and takeover_status.response.state == 'waiting_for_giveback'
+      retries: "{{ failover_status_retries }}"
+      delay: "{{ failover_status_delay }}"     
     when: takeover is defined or in_takeover is defined 
  
   - name: Do the giveback
     block: 
+    - name: Give it {{ pause_in_seconds_between_takeover_giveback }} seconds before we try giveback
+      ansible.builtin.pause:
+        seconds: "{{ pause_in_seconds_between_takeover_giveback }}"
+
     - name: storage failover giveback -ofnode <node> -override-vetoes {{ override_vetoes }}
       netapp.ontap.na_ontap_rest_cli: 
         command: 'storage/failover/giveback'
