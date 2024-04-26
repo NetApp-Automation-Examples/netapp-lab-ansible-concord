@@ -10,7 +10,7 @@
     #failover_check_only: True
     failover_status_retries: 10
     failover_status_delay: 30
-    # THe official reccomendation is 8 minutes 
+    # THe official reccomendation during an upgrade is 8 minutes 
     pause_in_seconds_between_takeover_giveback: 480
     failover_vetoes: []
     failover_vetoes_to_ignore: []
@@ -236,3 +236,4 @@
     - name: Log of check_lifs_not_home
       ansible.builtin.debug: 
         var: check_lifs_not_home
+    tags: ["revert_lifs"]

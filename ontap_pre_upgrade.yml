@@ -13,7 +13,9 @@
     ontap_package_version: 9.10.1P15
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
     validation_warnings: []
+    node_image_update_ready: "There is no update/install in progress"
     node_image_update_failure_text: "Failed"
+    node_image_update_success_text: ["Installation complete.","Success"]
     validation_warnings_to_ignore: 
       - Manual checks
       - SAN compatibility
@@ -28,18 +30,19 @@
       validate_certs: "{{ validate_certs }}"
 
   tasks:
-  - name: Get cluster nodes info
-    include_tasks: tasks/ontap_get_cluster_info_rest.yml
-    vars: 
-      gather_subset: 
-        - cluster/nodes
+  - block: 
+    - name: Get cluster nodes info
+      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      vars: 
+        gather_subset: 
+          - cluster/nodes
 
-  - name: Set nodes_list and nodes_info 
-    ansible.builtin.set_fact:
-      nodes_info: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
-      nodes_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
-      nodes_list: "{{ ontap_rest_info['cluster/nodes']['records'] | map(attribute='name') }}"
- 
+    - name: Set nodes_list and nodes_info 
+      ansible.builtin.set_fact:
+        nodes_info: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+        nodes_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
+        nodes_list: "{{ ontap_rest_info['cluster/nodes']['records'] | map(attribute='name') }}"
+    tags: always
 
   - name: Check what current image(s) are there
     block: 
@@ -179,19 +182,31 @@
         ansible.builtin.debug:
           var: nodes_need_new_image
         when: nodes_need_new_image is defined
+      
+      - name: >
+          Check on status for each node 
+          system node image show-update-progress -node <node> 
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'system/node/image/show-update-progress'
+          params: 
+            node: "{{ item }}"
+          verb: "GET"
+        register: check_if_node_image_upload_in_progress
+        loop: "{{ nodes_need_new_image }}"
 
       - name: >
-          "system node image update -node * -background true -package {{ ontap_package_url }} -replace-package true"
+          "system node image update -node <node> -background true -package {{ ontap_package_url }} -replace-package true"
         netapp.ontap.na_ontap_rest_cli: 
           command: 'system/node/image/update'
           params: 
-            node: "*"
+            node: "{{ item }}"
           body:   
             package: "{{ ontap_package_url }}"
             replace-package: true
             background: true
           verb: "PATCH"
         register: node_image_upload 
+        loop: "{{ nodes_need_new_image }}"
 
       - name: "Log of node_image_upload"
         ansible.builtin.debug: 
@@ -204,7 +219,7 @@
           command: 'system/node/image/show-update-progress'
           verb: "POST"
         register: node_image_upload_progress
-        
+
       - name: 
         ansible.builtin.debug: 
           var: node_image_upload_progress
