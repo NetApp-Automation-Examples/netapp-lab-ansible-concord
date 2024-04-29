@@ -15,6 +15,7 @@
   vars: 
     node_image_update_success_text: ["Installation complete.","Success"]
     node_image_update_ready: "There is no update/install in progress"
+    node_image_in_progress: ["Working","Success"]
     validation_warnings: []
     nodes_need_new_image: ["cluster1-01","cluster1-02"]
     validation_warnings_to_ignore: 
@@ -49,11 +50,15 @@
         verb: "POST"
       register: check_image_upload_progress
       loop: "{{ nodes_need_new_image }}"
+   
+    - name: Log
+      ansible.builtin.debug: 
+        var: check_image_upload_progress
 
     - name: Build list of nodes with no upload already in progress 
       ansible.builtin.set_fact: 
         nodes_in_progress: "{{ check_image_upload_progress.results | 
-                            selectattr(msg.cli_output, 'in', node_image_update_ready) | 
+                            selectattr('msg.cli_output', 'in', node_image_in_progress) | 
                             map(attribute='item') }}"
 
     - name: Log
