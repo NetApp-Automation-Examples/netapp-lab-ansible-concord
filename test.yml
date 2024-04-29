@@ -13,11 +13,31 @@
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
   vars: 
-    node_image_update_success_text: ["Installation complete.","Success"]
-    node_image_update_ready: "There is no update/install in progress"
-    node_image_in_progress: ["Working","Success"]
+    node_image_no_update_in_progress: "There is no update/install in progress"
     validation_warnings: []
     nodes_need_new_image: ["cluster1-01","cluster1-02"]
+
+    nodes_image_update_test_mock: 
+      - item: cluster1-01
+        msg:
+          cli_output: |-
+            Status of most recent operation:
+                  Run Status:     Working
+                  Exit Status:    Success
+                  Phase:          Download
+                  Exit Message:
+            skipped: false
+      - item: cluster1-02
+        msg:
+          cli_output: |-
+            There is no update/install in progress
+            Status of most recent operation:
+                    Run Status:     Exited
+                    Exit Status:    Success
+                    Phase:          Download
+                    Exit Message:   Software get http://.../9101P15_q_image.tgz completed on node cluster1-02.
+            skipped: false
+
     validation_warnings_to_ignore: 
       - Manual checks
     validation_results:
@@ -55,20 +75,15 @@
       ansible.builtin.debug: 
         var: check_image_upload_progress
 
-    - name: Build list of nodes with no upload already in progress 
+    - name: Build list of nodes with no update in progress 
       ansible.builtin.set_fact: 
-        nodes_in_progress: "{{ check_image_upload_progress.results | 
-                            selectattr('msg.cli_output', 'in', node_image_in_progress) | 
-                            map(attribute='item') }}"
+        nodes_nothing_in_progress: "{{ check_image_upload_progress.results | 
+                selectattr('msg.cli_output', 'search', node_image_no_update_in_progress) | 
+                map(attribute='item')}}"
 
     - name: Log
       ansible.builtin.debug: 
-        var: nodes_in_progress
-
-    - name: Build list of nodes with no upload already in progress 
-      ansible.builtin.set_fact: 
-        nodes_in_progress: check_image_upload_progress.results | selectattr(msg.cli_output, in, node_image_update_ready)
-
+        var: nodes_nothing_in_progress
 
     # - name: >
     #     Check on status until success
