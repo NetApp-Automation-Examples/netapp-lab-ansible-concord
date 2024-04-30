@@ -92,12 +92,12 @@
       
       - name: >
           Check on status for each node 
-          system node image show-update-progress -node <node> 
+          (system node image show-update-progress -node <node>) 
         netapp.ontap.na_ontap_rest_cli: 
           command: 'system/node/image/show-update-progress'
-          params: 
+          body: 
             node: "{{ item }}"
-          verb: "GET"
+          verb: "POST"
         register: check_if_node_image_upload_in_progress
         loop: "{{ nodes_need_new_image }}"
 
@@ -107,9 +107,9 @@
                   selectattr('msg.cli_output', 'search', node_image_no_update_in_progress_text) | 
                   map(attribute='item')}}"
 
-    - name: Log of nodes_nothing_in_progress
-      ansible.builtin.debug: 
-        var: nodes_nothing_in_progress
+      - name: Log of nodes_nothing_in_progress
+        ansible.builtin.debug: 
+          var: nodes_nothing_in_progress
 
       - name: >
           "system node image update -node <node> -background true -package {{ ontap_package_url }} -replace-package true"
@@ -128,14 +128,22 @@
       - name: "Log of node_image_upload"
         ansible.builtin.debug: 
           var: node_image_upload
+      
+      - name: Give it 10 seconds
+        ansible.builtin.pause: 
+          seconds: 10 
 
       - name: >
-          Check on status until success
-          system node image show-update-progress
+          Check on status until we get success or failure
+          (system node image show-update-progress)
         netapp.ontap.na_ontap_rest_cli: 
           command: 'system/node/image/show-update-progress'
           verb: "POST"
         register: node_image_upload_progress
+        until: node_image_no_update_in_progress_text in node_image_upload_progress.msg.cli_output 
+            or node_image_update_failure_text in node_image_upload_progress.msg.cli_output
+        retries: 30
+        delay: 20
 
       - name: 
         ansible.builtin.debug: 
@@ -186,11 +194,11 @@
 
     - name: >
         Set new_package_is_default
-        verify_node_image_set -> filter by image == {{ new_image_name }} -> map by isdefault -> remove duplicates 
+        (verify_node_image_set -> filter by image == {{ new_image_name }} -> map by isdefault) 
       ansible.builtin.set_fact: 
         new_package_is_default: "{{ verify_node_image_set.msg.records | 
             selectattr('image', 'equalto', new_image_name) | 
-            map(attribute='isdefault') | unique }}"
+            map(attribute='isdefault') }}"
 
     - name: log   
       ansible.builtin.debug:
@@ -199,7 +207,7 @@
     - name: Fail playbook if {{ new_image_name }} isn't set to default on every node
       ansible.builtin.fail:
         msg: "{{ new_image_name }} must be set as the default image for all nodes"
-      when: true not in new_package_is_default or new_package_is_default | length > 1
+      when: false in new_package_is_default
 
     tags: ["image", "set_node_image"]
 

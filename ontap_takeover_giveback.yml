@@ -17,7 +17,7 @@
     takeover_option: "normal"
     override_vetoes: "false"
     nodes: 
-      cluster1: cluster1-01
+      cluster1: cluster1-02
       cluster2: cluster2-01
     node: "{{ nodes[inventory_hostname] if inventory_hostname in nodes else '' }}"
     node_query:
@@ -95,7 +95,7 @@
   - name: Set version_mismatch
     ansible.builtin.set_fact: 
       version_mismatch: True
-      takeover_option: allow-version-mismatch
+      #takeover_option: allow-version-mismatch
     when: node_info.version.full != ha_partner.version.full
 
   - name: Log of current uptime, os version, and failover state 
@@ -215,12 +215,17 @@
         var: net_port_show 
 
     - name: net int revert * 
-      netapp.ontap.na_ontap_rest_cli: 
-        command: 'network/interface/revert'
-        params: 
-          lif: "*"
-        verb: "PATCH"
-      register: net_int_revert
+      block: 
+      - netapp.ontap.na_ontap_rest_cli: 
+          command: 'network/interface/revert'
+          params: 
+            lif: "*"
+          verb: "PATCH"
+        register: net_int_revert
+      rescue: 
+      - name: "Pause for connection failure on net int revert *"
+        ansible.builtin.pause: 
+          seconds: 20
 
     - name: Get node lifs post revert command
       include_tasks: tasks/get_node_lifs.yml
