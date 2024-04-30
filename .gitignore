@@ -1,2 +1,2 @@
 venv
-filter_plugins/__pycache__/*
+ansible/filter_plugins/__pycache__/*

@@ -1,0 +1,68 @@
+---
+- name: Deploy Concord
+  hosts: localhost
+  vars:
+    default_admin_token: "{{ lookup('env', 'CONCORD_ADMIN_TOKEN') }}"
+    concord_folder: "{{ playbook_dir }}/concord"
+    concord_compose_folder: "{{ concord_folder }}/docker-images/compose"
+    concord_conf_file: "{{ concord_compose_folder }}/concord.conf"
+    concord_api_base: "http://localhost:8001/api/v1"
+  module_defaults:    
+    ansible.builtin.uri:
+      headers: 
+        Authorization: "{{ default_admin_token | b64encode }}"
+  tasks: 
+  - name: Bring Concord up
+    block: 
+    # https://concord.walmartlabs.com/docs/getting-started/install/docker-compose.html
+    - name: Fetch the concord docker compose quickstart repo
+      ansible.builtin.git:
+        repo: https://github.com/walmartlabs/concord.git
+        dest: "{{ concord_folder }}"
+        force: true
+
+    #https://concord.walmartlabs.com/docs/getting-started/installation.html#default-admin-api-token
+    - name: Put our default_admin_token in concord-server->db->changeLogParameters
+      ansible.builtin.lineinfile:
+        dest: "{{ concord_conf_file }}"
+        insertafter:  "changeLogParameters {"
+        state: present
+        line: "\t\t\tdefaultAdminToken = \"{{ default_admin_token | b64encode }}\""
+        
+
+    - name: Ensure docker deamon is running on RHEL
+      ansible.builtin.service:
+        name: docker
+        state: started
+      become: true
+      when: ansible_distribution == 'RedHat'
+
+    - name: Ensure colima is running on Mac
+      ansible.builtin.command: colima start 
+      when: ansible_distribution == 'MacOSX'
+
+    - name: Run docker-compose up 
+      community.docker.docker_compose:
+        project_src: "{{ concord_compose_folder }}"
+      register: docker_compose_up
+
+    - name: Log
+      ansible.builtin.debug: 
+        var: docker_compose_up    
+    tags: deploy
+  
+  - name: Configure Concord 
+    block: 
+    - name: Test
+      ansible.builtin.uri:
+        url: "{{ concord_api_base }}/org"
+        method: GET
+        return_content: true
+      register: test
+    
+    - name: Log
+      ansible.builtin.debug: 
+        var: test
+
+    tags: configure
+  

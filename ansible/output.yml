@@ -1,0 +1,18 @@
+item: cluster1-02
+msg:
+  cli_output: |2-
+          Status of most recent operation:
+                  Run Status:     Working
+                  Exit Status:    Success
+                  Phase:          Download
+                  Exit Message:
+
+item: cluster1-02
+msg:
+  cli_output: |2-
+    There is no update/install in progress
+    Status of most recent operation:
+            Run Status:     Exited
+            Exit Status:    Success
+            Phase:          Download
+            Exit Message:   Software get http://.../9101P15_q_image.tgz completed on node cluster1-02.
