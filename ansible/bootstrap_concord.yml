@@ -1,16 +1,27 @@
 ---
 - name: Deploy Concord
   hosts: localhost
+  vars_prompt:
+    - name: github_username
+      prompt: What is your Github username?
+      private: false
+    - name: github_password
+      prompt: What is your Github password?
+    - name: github_otp
+      prompt: What is your 2FA OTP?
   vars:
-    default_admin_token: "{{ lookup('env', 'CONCORD_ADMIN_TOKEN') }}"
+    default_admin_token: "{{ lookup('env', 'CONCORD_ADMIN_TOKEN') | b64encode }}"
     concord_folder: "{{ playbook_dir }}/concord"
     concord_compose_folder: "{{ concord_folder }}/docker-images/compose"
     concord_conf_file: "{{ concord_compose_folder }}/concord.conf"
     concord_api_base: "http://localhost:8001/api/v1"
+    concord_org: Default
+    concord_deploy_key_secret: ConcordDeployKey
   module_defaults:    
     ansible.builtin.uri:
+      body_format: json
       headers: 
-        Authorization: "{{ default_admin_token | b64encode }}"
+        Authorization: "{{ default_admin_token }}"
   roles:
     - role: geerlingguy.docker
       when: ansible_distribution == 'MacOSX'
@@ -30,7 +41,7 @@
         dest: "{{ concord_conf_file }}"
         insertafter:  "changeLogParameters {"
         state: present
-        line: "\t\t\tdefaultAdminToken = \"{{ default_admin_token | b64encode }}\""
+        line: "\t\t\tdefaultAdminToken = \"{{ default_admin_token }}\""
     
     - name: Make sure docker is installed and running (Linux only)
       block: 
@@ -57,16 +68,56 @@
   
   - name: Configure Concord 
     block: 
-    - name: Test
-      ansible.builtin.uri:
-        url: "{{ concord_api_base }}/org"
-        method: GET
-        return_content: true
-      register: test
+    - name: Display API token
+      ansible.builtin.debug:
+        var: default_admin_token
     
-    - name: Log
-      ansible.builtin.debug: 
-        var: test
+    - name: Get deploy key 
+      block: 
+      - ansible.builtin.uri:
+          url: "{{ concord_api_base }}/org/{{ concord_org }}/secret/{{ concord_deploy_key_secret }}/public"
+          method: GET
+          return_content: true
+        register: get_deploy_key
+        
+      - name: Log get_deploy_key
+        ansible.builtin.debug: 
+          var: get_deploy_key
+
+      - name: Set deploy_key 
+        ansible.builtin.set_fact: 
+          deploy_key: "{{ get_deploy_key.json.publicKey }}"
+      rescue:           
+      - name: Create deploy key
+        block: 
+        - ansible.builtin.uri:
+            url: "{{ concord_api_base }}/org/{{ concord_org }}/secret"
+            method: POST
+            body_format: form-multipart
+            body: 
+              type: key_pair
+              name: "{{ concord_deploy_key_secret }}"
+            return_content: true
+          register: create_deploy_key
+        
+        - name: Log create_deploy_key
+          ansible.builtin.debug: 
+            var: create_deploy_key
+
+        - name: Set deploy_key
+          ansible.builtin.set_fact:
+            deploy_key: "{{ create_deploy_key.json.publicKey }}"
+
+    - name: Add read-only deploy key GitHub repository
+      community.general.github_deploy_key:
+        owner: "NetApp-Automation-Examples"
+        repo: "netapp-lab-ansible-concord"
+        name: "{{ concord_deploy_key_secret }}"
+        key: "{{ deploy_key }}"
+        read_only: true
+        username: "{{ github_username }}"
+        password: "{{ github_password }}"     
+        otp: "{{ github_otp }}"
 
     tags: configure
   
