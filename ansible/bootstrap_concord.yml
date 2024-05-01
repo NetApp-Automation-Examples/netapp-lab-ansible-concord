@@ -11,6 +11,9 @@
     ansible.builtin.uri:
       headers: 
         Authorization: "{{ default_admin_token | b64encode }}"
+  roles:
+    - role: geerlingguy.docker
+      when: ansible_distribution == 'MacOSX'
   tasks: 
   - name: Bring Concord up
     block: 
@@ -28,14 +31,15 @@
         insertafter:  "changeLogParameters {"
         state: present
         line: "\t\t\tdefaultAdminToken = \"{{ default_admin_token | b64encode }}\""
-        
-
-    - name: Ensure docker deamon is running on RHEL
-      ansible.builtin.service:
-        name: docker
-        state: started
-      become: true
-      when: ansible_distribution == 'RedHat'
+    
+    - name: Make sure docker is installed and running (Linux only)
+      block: 
+      - name: Ensure docker deamon is running 
+        ansible.builtin.service:
+          name: docker
+          state: started
+        become: true
+      when: ansible_distribution in ['Debian', 'CentOS', 'RedHat']
 
     - name: Ensure colima is running on Mac
       ansible.builtin.command: colima start 
