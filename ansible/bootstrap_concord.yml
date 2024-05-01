@@ -29,7 +29,7 @@
         Authorization: "{{ default_admin_token }}"
   roles:
     - role: geerlingguy.docker
-      when: ansible_distribution == 'MacOSX'
+      when: ansible_distribution in ['Debian', 'CentOS', 'RedHat']
   tasks: 
   - name: Bring Concord up
     block: 
