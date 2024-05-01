@@ -8,5 +8,4 @@ Then activate the venv.
 
 I typically install VS code with the Remote Explorer extension so I can connect directly to it and have a nice file editor experience. 
 
-# TODO 
-- Bootstrap concord as well
+To stand up concord, set CONCORD_ADMIN_TOKEN as an environment variable, cd into ansible and run the boostrap_concord.yml playbook. 
