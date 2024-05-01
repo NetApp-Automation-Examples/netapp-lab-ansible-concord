@@ -1,3 +1,254 @@
+configuration:
+  runtime: "concord-v2"
+  entryPoint: "main"
+  arguments: 
+    docker_image: leoldchap/concord-ansible-netapp
+    ansible_config: ansible/ansible.cfg
+    ansible_inventory: ansible/inventory
+    cluster_choices: ['cluster1','cluster2']
+    ontap_creds: ${crypto.exportCredentials('Default', 'OntapCreds', null)}
+    health_checks_failed: false
+    ping_test_failures: false
+    health_checks_retry: 3
+    ping_tests_retry: 3
+    mock: True
+    default_slack_text: ""
+    default_slack_emoji: ":concord:"
+
+publicFlows:
+  - main
+
+forms:
+  review_form: 
+  - reviewed: {label: "Logs have been reviewed? Note that process will end if you do not confirm this.", type: "boolean"}
+  - end_process: {label: "End proccess now?", type: "boolean"}
+  review_ping_tests_form: 
+  - reviewed: {label: "Ping test results have been reviewed? Note that process will end if you do not confirm this.", type: "boolean"}
+  - end_process: {label: "End proccess now?", type: "boolean"}
+
+  health_checks_form: 
+  - clusters:  { label: "Cluster(s)", type: "string+", readonly: false, allow: "${cluster_choices}"}
+  #- simulate_failure: { label: "Simulate failure?", type: "boolean" }
+  
+  upgrade_form: 
+  - clusters:  { label: "Cluster(s)", type: "string+", readonly: false, allow: "${cluster_choices}"}
+  - image_url: { label: "ONTAP Image URL", type: "string" }
+  
 flows:
-  default:
-  - log: "Hello Concord User"
+  main:  
+    - form: health_checks_form
+    - call: health_checks 
+      in: 
+        health_checks_clusters: ${health_checks_form.clusters} 
+    - log: "Completed health checks"
+
+    - form: upgrade_form
+      fields:
+      - clusters:  { 
+          label: "Cluster(s) that passed health checks", type: "string+", readonly: false, 
+          allow: "${health_checks_form.clusters}", value: "${health_checks_form.clusters}"
+        }
+      - image_url: { label: "ONTAP Image URL", type: "string" }
+    - set:
+        upgrade_clusters: ${upgrade_form.clusters}
+        upgrade_image_url: ${upgrade_form.image_url}
+    - log: "Get LIFs for ping test"
+    - task: ansible
+      in:
+        dockerImage: ${docker_image}
+        configFile: ${ansible_config}
+        inventoryFile: ${ansible_inventory}
+        playbook: ansible/get_lifs.yml
+        extraVars:
+          clusters: ${upgrade_clusters} 
+          ontap_creds: ${ontap_creds}
+        outVars:
+          - lifs_to_test
+      out: get_lifs
+    - log: ${get_lifs}
+    - set: 
+        lifs_to_test: ${get_lifs.lifs_to_test}
+    - log: "Pass LIFs to ping test"
+    # TODO - add review/trim LIFs step
+    - call: ping_tests
+      in: 
+        ping_test_clusters: ${upgrade_clusters} 
+        ping_test_lifs: ${lifs_to_test}
+
+    - log: "Get list HA pairs to loop through"    
+    - task: ansible
+      in:
+        dockerImage: ${docker_image}
+        configFile: ${ansible_config}
+        inventoryFile: ${ansible_inventory}
+        playbook: ansible/get_ha_pairs.yml
+        extraVars:
+          clusters: ${upgrade_clusters} 
+          ontap_creds: ${ontap_creds}
+        outVars:
+          - ha_pairs
+      out: get_ha_pairs
+    - set: 
+        ha_pairs: ${get_ha_pairs.ha_pairs}
+    - log: "ha_pairs = ${ha_pairs}"
+    - script: scripts/sequential_nodes_list.js
+      error:
+      - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
+    - log: "sequential_nodes_list: ${sequential_nodes_list}"
+    - call: upgrade_node
+      in: 
+        nodes_list: ${item}
+        lifs_to_test: ${lifs_to_test}
+      loop: 
+        items: ${sequential_nodes_list}
+       
+  upgrade_node: 
+    - log: "nodes = ${nodes_list}"
+    - try: 
+      - call: ping_tests
+        in: 
+          ping_test_clusters: ${upgrade_clusters}  
+          ping_test_lifs: ${lifs_to_test}
+      - task: ansible
+        in:
+          dockerImage: ${docker_image}
+          configFile: ${ansible_config}
+          inventoryFile: ${ansible_inventory}
+          playbook: ansible/takeover_giveback_mock.yml
+          extraVars:
+            nodes: ${nodes_list}
+            clusters: ${upgrade_clusters} 
+            ontap_creds: ${ontap_creds}
+          outVars:
+            - ha_info
+        out: node_upgrade_results
+      - log: "results of takeover_giveback_mock.yml - ${node_upgrade_results.ha_info}"
+      error: 
+        - throw: "Something happened ${lastError}"
+
+  health_checks:
+    - call: health_checks_playbook
+      in: 
+        ontap_clusters: ${health_checks_clusters}
+        #simulate_failure: ${health_checks_form.simulate_failure}
+      retry:
+        in: 
+          health_checks_failed: true
+        times: ${health_checks_retry}
+      out: health_checks_results
+      error: 
+        - call: send_slack
+          in: 
+            slack_text: "Health Check playbook has failed ${health_checks_retry} times"
+        - log: "Health Check playbook has failed ${health_checks_retry} times"
+        - exit
+      
+    - log: "Health checks playbook ran succesfully, review before proceeding"
+    - call: review 
+
+  ping_tests:
+    - call: ping_test_playbook
+      in:
+        mock: ${mock}
+        ontap_clusters: ${ping_test_clusters}
+        lifs_to_test: ${ping_test_lifs}
+      retry: 
+        in: 
+          ping_test_failures: true
+        times: ${ping_tests_retry}
+      out: ping_test_results
+    - log: ${ping_test_results}
+    - log: "Ping tests playbook ran succesfully, review before proceeding"
+    - call: review_ping_tests
+
+
+  review:
+    - call: send_slack
+      in: 
+        slack_emoji: ":pr_normal_review:"
+        slack_text: "ONTAP Upgrade concord process needs reviewed before it can proceed"
+    - form: review_form
+      saveSubmittedBy: true
+    - log: "Logs/progress reviewed by ${review_form.submittedBy.displayName}"
+    - if: ${review_form.end_process == true or review_form.reviewed == false}
+      then:
+        - log: "Process ended by ${review_form.submittedBy.displayName}: ${review_form}"
+        - call: send_slack
+          in: 
+            slack_emoji: ":stop:"
+            slack_text: "ONTAP Upgrade concord process ended by ${review_form.submittedBy.displayName}"
+        - exit
+  
+  review_ping_tests: 
+    - call: send_slack
+      in: 
+        slack_emoji: ":pr_normal_review:"
+        slack_text: "ONTAP Upgrade concord process needs ping tests reviewed before it can proceed"
+    - form: review_ping_tests_form
+      saveSubmittedBy: true
+    - log: "Logs/progress reviewed by ${review_ping_tests_form.submittedBy.displayName}"
+    - if: ${review_ping_tests_form.end_process == true or review_ping_tests_form.reviewed == false}
+      then:
+        - log: "Process ended by ${review_ping_tests_form.submittedBy.displayName}: ${review_ping_tests_form}"
+        - call: send_slack
+          in: 
+            slack_text: "ONTAP Upgrade concord process ended after ping test review by ${review_ping_tests_form.submittedBy.displayName}"
+        - exit
+  
+  health_checks_playbook:
+    - log: "health_checks_failed value = ${health_checks_failed}"
+    - if: ${health_checks_failed == true}
+      then:
+        - call: review
+    - task: ansible
+      in:
+        dockerImage: ${docker_image}
+        configFile: ${ansible_config}
+        inventoryFile: ${ansible_inventory}
+        playbook: ansible/health_checks.yml
+        extraVars:
+          clusters: ${ontap_clusters} 
+          ontap_creds: ${ontap_creds}
+          #simulate_failure: ${simulate_failure}
+        outVars:
+          - "summary_logs"
+          - "summary_failures"
+          - "summary_warnings"
+      out: health_checks
+    - set:
+        health_checks_results: ${health_checks}
+
+  ping_test_playbook: 
+    - log: "ping_test_failures value = ${ping_test_failures}; mock value = ${mock}"
+    - if: ${ping_test_failures == true}
+      then:
+        - call: review_ping_tests
+    - task: ansible
+      in:
+        dockerImage: ${docker_image}
+        configFile: ${ansible_config}
+        inventoryFile: ${ansible_inventory}
+        playbook: ansible/ping_test.yml
+        extraVars:
+          mock: ${mock}
+          clusters: ${ontap_clusters} 
+          lifs_to_test: ${lifs_to_test}
+          ontap_creds: ${ontap_creds}
+        outVars:
+          - lif_ping_test_results
+          - lifs_that_failed
+      out: ping_tests
+    - set:
+        ping_test_results: ${ping_tests}
+
+  send_slack: 
+    - log: "Mock send slack message: ${orDefault('slack_emoji', default_slack_emoji)} \n 
+            http://localhost:8001/#/process/${orDefault('parentInstanceId', txId)} \n 
+            ${orDefault('slack_text', default_slack_text)}"
+
+  onFailure:
+    - call: send_slack
+      in:
+        slack_emoji: ":err:"
+        slack_text: "The ONTAP Upgrade Concord worfklow has failed"
+
