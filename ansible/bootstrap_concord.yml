@@ -1,14 +1,15 @@
 ---
 - name: Deploy Concord
   hosts: localhost
-  vars_prompt:
-    - name: github_username
-      prompt: What is your Github username?
-      private: false
-    - name: github_password
-      prompt: What is your Github password?
-    - name: github_otp
-      prompt: What is your 2FA OTP?
+  # For some reason, GitHub keeps saying "GitHub repo does not exist..."
+  # vars_prompt:
+  #   - name: github_username
+  #     prompt: What is your Github username?
+  #     private: false
+  #   - name: github_password
+  #     prompt: What is your Github password?
+  #   - name: github_otp
+  #     prompt: What is your 2FA OTP?
   vars:
     default_admin_token: "{{ lookup('env', 'CONCORD_ADMIN_TOKEN') | b64encode }}"
     concord_folder: "{{ playbook_dir }}/concord"
@@ -112,17 +113,18 @@
         ansible.builtin.set_fact:
           deploy_key: "{{ create_deploy_key.json.publicKey }}"
 
-    - name: Add read-only deploy key GitHub repository
-      community.general.github_deploy_key:
-        owner: "{{ github_owner }}"
-        repo: "{{ github_repo }}"
-        force: true
-        name: "{{ concord_deploy_key_secret }}"
-        key: "{{ deploy_key }}"
-        read_only: true
-        username: "{{ github_username }}"
-        password: "{{ github_password }}"     
-        otp: "{{ github_otp }}"
+    # See note at top of the file :'(
+    # - name: Add read-only deploy key GitHub repository
+    #   community.general.github_deploy_key:
+    #     owner: "{{ github_owner }}"
+    #     repo: "{{ github_repo }}"
+    #     force: true
+    #     name: "{{ concord_deploy_key_secret }}"
+    #     key: "{{ deploy_key }}"
+    #     read_only: true
+    #     username: "{{ github_username }}"
+    #     password: "{{ github_password }}"     
+    #     otp: "{{ github_otp }}"
 
     - name: Check for project 
       ansible.builtin.uri:
