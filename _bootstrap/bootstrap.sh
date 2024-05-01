@@ -6,4 +6,4 @@ dnf install python3.9 -y
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip setuptools
-pip install -r requirements.txt
+pip install -r ansible/requirements.txt
