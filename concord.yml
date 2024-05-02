@@ -6,7 +6,7 @@ configuration:
     - "mvn://com.walmartlabs.concord.plugins.basic:ansible-tasks:2.9.0"
   arguments: 
     docker_image: leoldchap/concord-ansible-netapp
-    ansible_config: ansible/ansible.cfg
+    ansible_config: ansible/ansible-concord.cfg
     ansible_inventory: ansible/inventory
     cluster_choices: ['cluster1','cluster2']
     ontap_creds: ${crypto.exportCredentials('Default', 'OntapCreds', null)}
