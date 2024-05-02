@@ -1,0 +1,44 @@
+---
+- name: "Takeover giveback mock placeholder on {{ clusters }}"
+  hosts: "{{ clusters | default('localhost') }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    nodes: []
+    node: "{{ nodes[inventory_hostname] if inventory_hostname in nodes else '' }}"
+    node_query:
+      fields: "uptime,state,ha,version"
+  tasks:
+  - name: Log of nodes
+    ansible.builtin.debug:
+      msg: "nodes = {{ nodes }} and node = {{ node }}" 
+
+  - name: End playbook for host if no node found
+    ansible.builtin.meta: end_host
+    when: node == ''
+
+  - name: Get HA info 
+    include_tasks: tasks/rest_info.yml
+    vars: 
+      gather_subset: 
+        - cluster/nodes
+      parameters:
+        name: "{{ node }}"
+        fields: "{{ node_query.fields }}"
+
+  - name: Set ha_info fact
+    ansible.builtin.set_fact: 
+      ha_info: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+
+  - name: Log
+    ansible.builtin.debug: 
+      var: ha_info

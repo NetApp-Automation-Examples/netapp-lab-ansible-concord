@@ -1,5 +1,5 @@
 - name: Get cluster info 
-  include_tasks: tasks/rest_info.yml
+  include_tasks: tasks/ontap_get_cluster_info_rest.yml
   vars: 
     gather_subset: 
       - cluster

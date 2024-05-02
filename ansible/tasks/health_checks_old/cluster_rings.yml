@@ -1,0 +1,37 @@
+- name: Get epoch/quorum master info from the cluster ring 
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'cluster/ring'
+    params: 
+      unitname: "{{ item }}"
+      fields: "node,unitname,epoch,db-epoch,db-trnxs,master,online"
+    verb: "GET"
+  loop: "{{ cluster_rings | default(['vldb','mgmt','vifmgr','bcomd','crs']) }}"
+  loop_control:
+    label: "{{ item }}"
+  register: verify_cluster_rings
+
+- name: Log of verify_cluster_rings
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      "verify_cluster_rings": "{{ item.msg.records }}"
+  loop: "{{ verify_cluster_rings.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+  
+- name: Add failure if a.) the per-ring relational database epoch and database epoch do not match for 
+        each node
+        b.) the per-ring quorum master is not the same for all nodes. 
+        (Each ring might have a different quorum master)
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "The database epochs and/or quorum master do not match for each node for {{ item.item }}" 
+      details: "{{ item.msg.records }}"
+  loop: "{{ verify_cluster_rings.results }}"
+  loop_control: 
+    label: "{{ item.item }}"
+  when: item.msg.records | map(attribute='epoch') | unique | length > 1 
+        or item.msg.records | map(attribute='db_epoch') | unique | length > 1
+        or item.msg.records | map(attribute='master') | unique | length > 1

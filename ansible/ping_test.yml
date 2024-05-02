@@ -1,0 +1,55 @@
+---
+- name: "Run ping tests on array of LIFs"
+  hosts: "{{ clusters | default('localhost') }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    mock: False
+    test_count: 2
+    fail_threshold: 2
+    ping_count: 5
+    test_pause: 10
+    lifs_to_ping_test: "{{ lifs_to_test[inventory_hostname] }}"
+    lifs_that_failed: []
+    lif_ping_test_results: ""
+  tasks:
+  - name: Log of lifs to ping test
+    ansible.builtin.debug: 
+      msg: | 
+          {% for lif in  lifs_to_ping_test %}
+            - {{ lif.ip.address }} ({{ lif.name }})
+          {% endfor %}
+
+  - name: "{{ '(MOCK RUN, will not actually ping)' if mock == True }} For above referenced LIFs, `ping -c {{ ping_count }} <ip>` {{ test_count }} 
+        times with a pause of {{ test_pause }} seconds between runs "
+    ansible.builtin.script: 
+      cmd: "scripts/ping_test.py {{ lifs_to_ping_test | to_json | b64encode }} \ 
+          {{ ping_count }} {{ test_count }} {{ test_pause }} {{ 'mock' if mock == True }}"
+    register: lif_ping_test_return
+
+  - name: Set lif_ping_test_results fact
+    ansible.builtin.set_fact: 
+      lif_ping_test_results: "{{ lif_ping_test_return.stdout }}"
+
+  - name: Set lifs_that_failed fact
+    ansible.builtin.set_fact: 
+      lifs_that_failed: "{{ lif_ping_test_results | selectattr('failed_pings', 'ge', fail_threshold) }}"
+
+  - name: Fail playbook if any lif ping tests failed equal to 
+          or more than {{ fail_threshold }} times
+    ansible.builtin.fail: 
+      msg: |
+          The following LIFs failed the ping test at least {{ fail_threshold }} times: 
+          {% for lif in lifs_that_failed %}
+            - {{ lif.ip.address }} ({{ lif.name }}) failed {{ lif.failed_pings }} times
+          {% endfor %}
+    when: lifs_that_failed | length > 0

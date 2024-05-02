@@ -1,5 +1,5 @@
 - name: "Get all {{ online_object_check }} that are not online/running"
-  include_tasks: tasks/rest_info.yml
+  include_tasks: tasks/ontap_get_cluster_info_rest.yml
   vars: 
     gather_subset: "{{ online_object_check }}"
     parameters:

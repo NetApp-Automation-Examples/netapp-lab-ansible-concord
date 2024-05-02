@@ -1,0 +1,39 @@
+---
+- name: "Return a simple list of HA pairs from {{ clusters }}"
+  hosts: "{{ clusters | default('localhost') }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    nodes_query:
+      fields: "uptime,state,ha,version"
+    ha_pairs: []
+  tasks:
+  - name: Get HA info 
+    include_tasks: tasks/rest_info.yml
+    vars: 
+      gather_subset: 
+        - cluster/nodes
+      parameters:
+        fields: "{{ nodes_query.fields }}"
+
+  - name: Set nodes fact
+    ansible.builtin.set_fact: 
+      nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+
+  - name: Set ha_pairs fact
+    ansible.builtin.set_fact: 
+      ha_pairs: "{{ nodes | ontap_ha_pairs }}"
+
+  - name: Log of ha_pairs
+    ansible.builtin.debug: 
+      var: ha_pairs
+
