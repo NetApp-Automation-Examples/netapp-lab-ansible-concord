@@ -10,8 +10,10 @@
   #     prompt: What is your Github password?
   #   - name: github_otp
   #     prompt: What is your 2FA OTP?
+  vars_files:
+    - group_vars/ontap_clusters.yml 
   vars:
-    default_admin_token: "{{ lookup('env', 'CONCORD_ADMIN_TOKEN') | b64encode }}"
+    default_admin_token: "{{ ontap_password | b64encode }}"
     concord_folder: "{{ playbook_dir }}/concord"
     concord_compose_folder: "{{ concord_folder }}/docker-images/compose"
     concord_conf_file: "{{ concord_compose_folder }}/concord.conf"
@@ -19,6 +21,10 @@
     concord_org: Default
     concord_deploy_key_secret: ConcordDeployKey
     concord_project: Project
+    concord_ontap_creds_secret: 
+      name: OntapCreds
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
     github_owner: NetApp-Automation-Examples
     github_repo: netapp-lab-ansible-concord
     github_repo_url: git@github.com:NetApp-Automation-Examples/netapp-lab-ansible-concord.git
@@ -113,6 +119,37 @@
         ansible.builtin.set_fact:
           deploy_key: "{{ create_deploy_key.json.publicKey }}"
 
+    - name: Check for {{ concord_ontap_creds_secret.name }}
+      ansible.builtin.uri:
+        url: "{{ concord_api_base }}/org/{{ concord_org }}/secret/{{ concord_ontap_creds_secret.name }}"
+        method: GET
+        return_content: true
+        status_code: [200, 404]
+      register: get_ontap_creds
+    
+    - name: Log get_ontap_creds
+      ansible.builtin.debug: 
+        var: get_ontap_creds
+
+    - block: 
+      - name: If get_ontap_creds.status == 404, create secret
+        ansible.builtin.uri:
+          url: "{{ concord_api_base }}/org/{{ concord_org }}/secret"
+          method: POST
+          body_format: form-multipart
+          body:
+            name: "{{ concord_ontap_creds_secret.name }}" 
+            type: username_password
+            username: "{{ concord_ontap_creds_secret.username }}" 
+            password: "{{ concord_ontap_creds_secret.password }}"
+          return_content: true
+        register: create_ontap_creds
+
+      - name: Log of create_ontap_creds
+        ansible.builtin.debug: 
+          var: create_ontap_creds
+      when: get_ontap_creds.status == 404
+
     # See note at top of the file :'(
     # - name: Add read-only deploy key GitHub repository
     #   community.general.github_deploy_key:
@@ -157,6 +194,7 @@
         ansible.builtin.debug: 
           var: create_project
       when: get_project.status == 404
+
 
     tags: configure
   
