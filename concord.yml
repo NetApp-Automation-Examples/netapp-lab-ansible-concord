@@ -9,6 +9,7 @@ configuration:
     ansible_config: ansible/ansible-concord.cfg
     ansible_inventory: ansible/inventory
     cluster_choices: ['cluster1','cluster2']
+    ontap_package_versions: ['9.10.1P15', '9.10.1P16']
     ontap_creds: ${crypto.exportCredentials('Default', 'OntapCreds', null)}
     health_checks_failed: false
     ping_test_failures: false
@@ -36,6 +37,7 @@ forms:
   upgrade_form: 
   - clusters:  { label: "Cluster(s)", type: "string+", readonly: false, allow: "${cluster_choices}"}
   - image_url: { label: "ONTAP Image URL", type: "string" }
+  - package_version: { label: "ONTAP Package version, i.e. 9.10.1P15",  type: "string", allow: "${ontap_package_versions}"}
   
 flows:
   main:  
@@ -98,13 +100,37 @@ flows:
       error:
       - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
+    - log: "Run the pre-upgrade tasks"
+    - task: ansible
+      in:
+        dockerImage: ${docker_image}
+        configFile: ${ansible_config}
+        inventoryFile: ${ansible_inventory}
+        playbook: ansible/pre_upgrade.yml
+        extraVars:
+          clusters: ${upgrade_clusters} 
+          ontap_creds: ${ontap_creds}
+          ontap_package_version: ${upgrade_form.package_version}
+      out: pre_upgrade
+    - log: Run the takeover_giveback on each ha pair sequentially 
     - call: upgrade_node
       in: 
         nodes_list: ${item}
         lifs_to_test: ${lifs_to_test}
       loop: 
         items: ${sequential_nodes_list}
-       
+    - log: Run the post-upgrade tasks
+    - task: ansible
+      in:
+        dockerImage: ${docker_image}
+        configFile: ${ansible_config}
+        inventoryFile: ${ansible_inventory}
+        playbook: ansible/post_upgrade.yml
+        extraVars:
+          clusters: ${upgrade_clusters} 
+          ontap_creds: ${ontap_creds}
+      out: pre_upgrade
+
   upgrade_node: 
     - log: "nodes = ${nodes_list}"
     - try: 
@@ -117,7 +143,7 @@ flows:
           dockerImage: ${docker_image}
           configFile: ${ansible_config}
           inventoryFile: ${ansible_inventory}
-          playbook: ansible/takeover_giveback_mock.yml
+          playbook: ansible/takeover_giveback.yml
           extraVars:
             nodes: ${nodes_list}
             clusters: ${upgrade_clusters} 

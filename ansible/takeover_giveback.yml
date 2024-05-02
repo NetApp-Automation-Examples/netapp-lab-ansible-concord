@@ -16,9 +16,7 @@
     failover_vetoes_to_ignore: []
     takeover_option: "normal"
     override_vetoes: "false"
-    nodes: 
-      cluster1: cluster1-02
-      cluster2: cluster2-01
+    nodes: []
     node: "{{ nodes[inventory_hostname] if inventory_hostname in nodes else '' }}"
     node_query:
       fields: "uptime,state,ha,version"
