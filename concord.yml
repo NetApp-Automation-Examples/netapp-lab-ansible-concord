@@ -1,6 +1,9 @@
 configuration:
   runtime: "concord-v2"
   entryPoint: "main"
+  dependencies:
+    - "mvn://com.walmartlabs.concord.plugins.basic:concord-tasks:latest"
+    - "mvn://com.walmartlabs.concord.plugins.basic:ansible-tasks:latest"
   arguments: 
     docker_image: leoldchap/concord-ansible-netapp
     ansible_config: ansible/ansible.cfg
