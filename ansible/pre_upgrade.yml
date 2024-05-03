@@ -1,6 +1,6 @@
 ---
 - name: Pre-upgrade tasks for ONTAP Upgrade
-  hosts: "{{ ansible_limit }}"
+  hosts: "{{ clusters | default('localhost') }}"
   gather_facts: no
   connection: 'local'
   collections:

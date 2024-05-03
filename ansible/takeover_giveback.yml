@@ -1,6 +1,6 @@
 ---
 - name: Takeover/giveback of a given node for each cluster to upgrade ONTAP
-  hosts: "{{ ansible_limit }}"
+  hosts: "{{ clusters | default('localhost') }}"
   gather_facts: no
   connection: 'local'
   collections:
