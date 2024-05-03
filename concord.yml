@@ -54,6 +54,7 @@ flows:
           allow: "${health_checks_form.clusters}", value: "${health_checks_form.clusters}"
         }
       - image_url: { label: "ONTAP Image URL", type: "string" }
+      - package_version: { label: "ONTAP Package version, i.e. 9.10.1P15",  type: "string", allow: "${ontap_package_versions}"}
     - set:
         upgrade_clusters: ${upgrade_form.clusters}
         upgrade_image_url: ${upgrade_form.image_url}
@@ -80,7 +81,7 @@ flows:
         ping_test_clusters: ${upgrade_clusters} 
         ping_test_lifs: ${lifs_to_test}
 
-    - log: "Get list HA pairs to loop through"    
+    - log: "Get list of HA pairs to loop through"    
     - task: ansible
       in:
         dockerImage: ${docker_image}
