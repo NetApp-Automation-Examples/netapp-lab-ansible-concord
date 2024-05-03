@@ -160,6 +160,21 @@ def return_invalid_broadcast_domains(broadcast_domains, cluster_nodes):
                 
     return invalid_broadcast_domains
 
+def build_list_of_ha_pairs(cluster_nodes):
+    """Given a list of cluster nodes from the REST API, return a simple list of ha pair names"""
+    ha_pairs = []
+    for node in cluster_nodes:
+        ha_pair = [node['name']]
+
+        for partner in node['ha']['partners']:
+            ha_pair.append(partner['name'])
+        
+        sorted_ha_pair = human_sort(ha_pair)
+        if sorted_ha_pair not in ha_pairs:
+            ha_pairs.append(sorted_ha_pair)
+
+    return sorted(ha_pairs)
+
 def validate_port_group(ports_list, cluster_nodes):
     """Given a list of ports, only return True if there is at least one 
     port on every node in the cluster, and all vlan tags match"""
@@ -210,5 +225,5 @@ class FilterModule(object):
             'ontap_volume_name_increment': calculate_volume_name_with_increment,
             'ontap_find_invalid_failover_groups': return_invalid_failover_groups,
             'ontap_find_invalid_broadcast_domains': return_invalid_broadcast_domains,
-
+            'ontap_ha_pairs': build_list_of_ha_pairs
         }
