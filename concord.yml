@@ -251,6 +251,7 @@ flows:
         extraVars:
           clusters: ${ontap_clusters} 
           ontap_creds: ${ontap_creds}
+          ontap_package_version: ${target_package_version}
           #simulate_failure: ${simulate_failure}
         outVars:
           - "summary_logs"
