@@ -15,7 +15,7 @@ configuration:
     ping_test_failures: false
     health_checks_retry: 3
     ping_tests_retry: 3
-    mock: True
+    mock: false
     default_slack_text: ""
     default_slack_emoji: ":concord:"
 
