@@ -28,6 +28,9 @@
           {% for lif in  lifs_to_ping_test %}
             - {{ lif.ip.address }} ({{ lif.name }})
           {% endfor %}
+  
+  - meta: end_host
+    when: lifs_to_ping_test | length == 0
 
   - name: "{{ '(MOCK RUN, will not actually ping)' if mock == True }} For above referenced LIFs, `ping -c {{ ping_count }} <ip>` {{ test_count }} 
         times with a pause of {{ test_pause }} seconds between runs "
