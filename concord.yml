@@ -35,19 +35,18 @@ forms:
 
   health_checks_form: 
   - clusters:  { label: "Cluster(s)", type: "string+", readonly: false, allow: "${cluster_choices}"}
-  #- simulate_failure: { label: "Simulate failure?", type: "boolean" }
-  
-  upgrade_form: 
-  - clusters:  { label: "Cluster(s)", type: "string+", readonly: false, allow: "${cluster_choices}"}
   - image_url: { label: "ONTAP Image URL", type: "string" }
   - package_version: { label: "ONTAP Package version, i.e. 9.10.1P15",  type: "string", allow: "${ontap_package_versions}"}
-  
+
+  #- simulate_failure: { label: "Simulate failure?", type: "boolean" }
+    
 flows:
   main:  
     - form: health_checks_form
     - call: health_checks 
       in: 
         health_checks_clusters: ${health_checks_form.clusters} 
+        ontap_package_version: ${health_checks_form.package_version}
     - log: "Completed health checks"
 
     - form: upgrade_form
@@ -56,11 +55,10 @@ flows:
           label: "Cluster(s) that passed health checks", type: "string+", readonly: false, 
           allow: "${health_checks_form.clusters}", value: "${health_checks_form.clusters}"
         }
-      - image_url: { label: "ONTAP Image URL", type: "string" }
-      - package_version: { label: "ONTAP Package version, i.e. 9.10.1P15",  type: "string", allow: "${ontap_package_versions}"}
     - set:
         upgrade_clusters: ${upgrade_form.clusters}
-        upgrade_image_url: ${upgrade_form.image_url}
+        upgrade_image_url: ${health_checks_form.image_url}
+        upgrade_package_version: ${health_checks_form.package_version}
     - log: "Get LIFs for ping test"
     - task: ansible
       in:
@@ -114,7 +112,7 @@ flows:
         extraVars:
           clusters: ${upgrade_clusters} 
           ontap_creds: ${ontap_creds}
-          ontap_package_version: ${upgrade_form.package_version}
+          ontap_package_version: ${upgrade_package_version}
       out: pre_upgrade
     - log: Run the takeover_giveback on each ha pair sequentially 
     - call: upgrade_node
@@ -174,7 +172,7 @@ flows:
     - call: health_checks_playbook
       in: 
         ontap_clusters: ${health_checks_clusters}
-        #simulate_failure: ${health_checks_form.simulate_failure}
+        ontap_package_version: ${ontap_package_version}
       retry:
         in: 
           health_checks_failed: true

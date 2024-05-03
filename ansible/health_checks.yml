@@ -13,7 +13,7 @@
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
   vars:
-    ontap_package_version: 9.10.1P15
+    ontap_package_version: ""
     summary_failures: []
     summary_warnings: []
     summary_logs: []
