@@ -14,8 +14,11 @@ configuration:
     health_checks_failed: false
     ping_test_failures: false
     health_checks_retry: 3
+    skip_ping_test: false
     ping_tests_retry: 3
-    mock: false
+    takeover_giveback_retry: 3
+    # Do mock ping tests for now
+    mock: true
     default_slack_text: ""
     default_slack_emoji: ":concord:"
 
@@ -135,10 +138,12 @@ flows:
   upgrade_node: 
     - log: "nodes = ${nodes_list}"
     - try: 
-      - call: ping_tests
-        in: 
-          ping_test_clusters: ${upgrade_clusters}  
-          ping_test_lifs: ${lifs_to_test}
+      - if: ${skip_ping_test == false}
+        then:
+          - call: ping_tests
+            in: 
+              ping_test_clusters: ${upgrade_clusters}  
+              ping_test_lifs: ${lifs_to_test}
       - task: ansible
         in:
           dockerImage: ${docker_image}
@@ -152,6 +157,22 @@ flows:
           outVars:
             - ha_info
         out: node_upgrade_results
+        retry:
+          in: 
+            skip_ping_test: true
+          times: ${takeover_giveback_retry}
+        out: health_checks_results
+        error: 
+          - call: send_slack
+            in: 
+              slack_text: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
+          - log: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
+          - exit
+        
+      - log: "Health checks playbook ran succesfully, review before proceeding"
+      - call: review 
+
+
       - log: "results of takeover_giveback_mock.yml - ${node_upgrade_results.ha_info}"
       error: 
         - throw: "Something happened ${lastError}"
