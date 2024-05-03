@@ -13,6 +13,7 @@
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
   vars:
+    ontap_package_version: 9.10.1P15
     summary_failures: []
     summary_warnings: []
     summary_logs: []
@@ -601,11 +602,23 @@
           verb: "GET"
         register: verify_ontap_version
 
+      - name: Set uptime_and_os
+        ansible.builtin.set_fact: 
+          uptime_and_os: "{{ verify_ontap_version.msg.records | community.general.lists_mergeby(verify_uptime.msg.records, 'node') }}"
+
       - name: Show uptime and current ONTAP Version
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
-            uptime_and_os: "{{ verify_ontap_version.msg.records | community.general.lists_mergeby(verify_uptime.msg.records, 'node') }}"
+            uptime_and_os: "{{ uptime_and_os }}"
+      
+      - name: Fail playbook if the cluster is already at '{{ ontap_package_version }}'
+        include_tasks: tasks/add_failure.yml
+        vars: 
+          failure: 
+            issue: "New image target {{ ontap_package_version }} is already the current version for all nodes"
+            details: "{{ uptime_and_os }}"
+        when: ontap_package_version | length > 0 and uptime_and_os | map(attribute='version') | unique == [ontap_package_version]
 
       - name: Show summary_logs
         ansible.builtin.debug: 
