@@ -25,7 +25,7 @@
   tasks:
   - block: 
     - name: Get cluster nodes info
-      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      include_tasks: tasks/rest_info.yml
       vars: 
         gather_subset: 
           - cluster/nodes
@@ -253,7 +253,7 @@
   - name: Kick off autosupports 
     block: 
     - name: Get number of nodes
-      include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      include_tasks: tasks/rest_info.yml
       vars: 
         gather_subset: 
           - cluster/nodes
