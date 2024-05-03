@@ -8,3 +8,5 @@ Then activate the venv and set ONTAP_PASSWORD.
 ```export ONTAP_PASSWORD=<thepsswd>```
 
 To stand up concord, cd into ansible and run the boostrap_concord.yml playbook. There's a weird issue with the github_deploy_key ansible module so you'll have to add that public key to github manually for now, but everything else is automated.
+
+Shout out to https://github.com/rif/spark, a nice lil http server that works great for testing upgrades in a LOD. 
