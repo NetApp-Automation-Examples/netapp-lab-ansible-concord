@@ -158,10 +158,7 @@ flows:
             - ha_info
         out: node_upgrade_results
         retry:
-          in: 
-            skip_ping_test: true
           times: ${takeover_giveback_retry}
-        out: health_checks_results
         error: 
           - call: send_slack
             in: 
@@ -169,10 +166,6 @@ flows:
           - log: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
           - exit
         
-      - log: "Health checks playbook ran succesfully, review before proceeding"
-      - call: review 
-
-
       - log: "results of takeover_giveback_mock.yml - ${node_upgrade_results.ha_info}"
       error: 
         - throw: "Something happened ${lastError}"
