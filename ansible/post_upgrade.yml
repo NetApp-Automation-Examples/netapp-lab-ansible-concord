@@ -20,7 +20,7 @@
   tasks:    
   - name: "Re-enable autogiveback"
     block: 
-    - name: Update auto-giveback on all nodes (`storage failover modify -auto-giveback true -nodes *`)  
+    - name: storage failover modify -auto-giveback true -nodes *
       netapp.ontap.na_ontap_rest_cli: 
         command: 'storage/failover'
         params:   
@@ -34,7 +34,7 @@
       ansible.builtin.debug: 
         var: update_autogiveback
 
-    - name: Get auto-giveback status after update command
+    - name: storage failover show -fields auto-giveback 
       netapp.ontap.na_ontap_rest_cli: 
         command: 'storage/failover'
         params: 
@@ -42,7 +42,7 @@
         verb: "GET"
       register: confirm_autogiveback
 
-    - name: Set confirm_autogiveback var 
+    - name: Set confirm_autogiveback 
       ansible.builtin.debug: 
         var: confirm_autogiveback
 
@@ -50,7 +50,7 @@
       ansible.builtin.set_fact:
         autogiveback_still_false: "{{ confirm_autogiveback.msg.records | selectattr('auto_giveback', 'equalto', false) | list }}"
 
-    - name: log
+    - name: log of autogiveback_still_false
       ansible.builtin.debug: 
         var: autogiveback_still_false
 

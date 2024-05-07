@@ -135,7 +135,6 @@
       include_tasks: tasks/get_node_lifs.yml
     
     - name: >
-        Do takeover
         storage failover takeover -ofnode <node> -option {{ takeover_option }} -override-vetoes {{ override_vetoes }}
       netapp.ontap.na_ontap_rest_cli: 
         command: 'storage/failover/takeover'
@@ -176,7 +175,7 @@
         verb: "POST"
       register: giveback
     
-    - name: Check node status until we get "up"
+    - name: /cluster/nodes/{{ node_info.uuid }}?fields=state,ha.giveback.state until  until we get "up"
       netapp.ontap.na_ontap_restit:
         api: cluster/nodes/{{ node_info.uuid }}
         query:
@@ -187,7 +186,7 @@
       retries: "{{ failover_status_retries }}"
       delay: "{{ failover_status_delay }}" 
 
-    - name: Check giveback status on HA partner until we get "nothing_to_giveback"
+    - name: /cluster/nodes/{{ node_info.uuid }}?fields=ha until we get "nothing_to_giveback"
       netapp.ontap.na_ontap_restit:
         api: cluster/nodes/{{ ha_partner.uuid }}
         query:

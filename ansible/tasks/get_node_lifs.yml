@@ -1,9 +1,12 @@
-- name: Get all LIFs with the home node set to <node>
+- name: |
+    Get all enabled LIFs with the home node set to <node>
+    (`netapp.ontap.na_ontap_restit network/ip/interfaces`)
   netapp.ontap.na_ontap_restit:
     api: network/ip/interfaces
     query:
       location.home_node.name: "{{ node }}"
       fields: "*"
+      enabled: true
   register: get_node_lifs
 
 - name: Set node_lifs fact
@@ -12,7 +15,12 @@
 
 - name: Log node_lifs
   ansible.builtin.debug: 
-    msg: >
+    var: node_lifs | pprint
+
+- name: Log node_lifs
+  ansible.builtin.debug: 
+    msg: |
+     LIF   State  Current   Home 
      {% for l in node_lifs %}
-       {{ l.name +' is '+l.state|upper+' at '+l.location.node.name }}{{ ' (home is '+l.location.home_node.name+')' if l.location.is_home == false }}
+     {{ l.name +'  '+l.state|upper+'  '+l.location.node.name +':'+l.location.port.name+'  '+l.location.home_node.name+':'+l.location.home_port.name}}
      {% endfor %} 
