@@ -40,7 +40,7 @@
     ansible.builtin.meta: end_host
     when: node == ''
 
-  - name: Get node info
+  - name: Get node info (`netapp.ontap.na_ontap_rest_info`)
     include_tasks: tasks/rest_info.yml
     vars:
       gather_subset:
@@ -57,7 +57,7 @@
     ansible.builtin.set_fact:
       node_state: "{{ node_info.state }}"
 
-  - name: Get HA Partner info 
+  - name: Get HA Partner info  (`netapp.ontap.na_ontap_restit`)
     block: 
     - netapp.ontap.na_ontap_restit:
         api: cluster/nodes/{{ node_info.ha.partners.0.uuid }}

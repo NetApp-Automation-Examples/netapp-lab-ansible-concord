@@ -23,7 +23,9 @@
     - name: Get basic info needed and set variables (`netapp.ontap.na_ontap_rest_info`)
       block: 
       
-      - name: Get cluster, node, aggr, vol, svm, network interfaces, port and SAN info
+      - name: |
+          Get cluster, node, aggr, vol, svm, network interfaces, port and SAN info
+          (`netapp.ontap.na_ontap_rest_info`)
         include_tasks: tasks/rest_info.yml
         vars: 
           gather_subset: 
@@ -324,7 +326,9 @@
     - name: Check networking 
       block: 
 
-      - name: Check for cluster DNS not being up
+      - name: |
+          Check for cluster DNS not being up 
+          (`dns check -vserver {{ cluster_info.name }} !up`)
         netapp.ontap.na_ontap_rest_cli: 
           command: 'dns/check'
           params: 
@@ -379,7 +383,7 @@
             log: 
               net_int_not_home: "{{ net_int_not_home }}"
 
-        - name: All LIFs should be homed prior to upgrades
+        - name: All LIFs should be homed prior to upgrades (`net int revert *`)
           netapp.ontap.na_ontap_rest_cli:
             command: "network/interface/revert"
             params: 
@@ -396,7 +400,7 @@
             log:  
               net_int_revert: "{{ verify_net_int_revert }}"
         
-        - name: Check to make sure everything got home (net int show -is-home false)
+        - name: Check to make sure everything got home (`net int show -is-home false`)
           netapp.ontap.na_ontap_rest_cli: 
             command: 'network/interface'
             params: 
@@ -566,7 +570,7 @@
       tags: ["jobs"]
 
     - block: 
-      - name: Ensure HA is enabled for two node clusters
+      - name: Ensure HA is enabled for two node clusters (`netapp.ontap.na_ontap_cluster_ha`)
         netapp.ontap.na_ontap_cluster_ha:
           state: present
         register: enable_ha

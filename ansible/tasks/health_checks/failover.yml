@@ -25,7 +25,7 @@
       log: 
         failover_not_possible: "{{ failover_not_possible }}"
 
-  - name: Enable storage failover
+  - name: Enable storage failover (`netapp.ontap.na_ontap_storage_failover`)
     netapp.ontap.na_ontap_storage_failover:
       state: present
       node_name: "{{ failover_not_possible | map(attribute='node') | join(',') }}"

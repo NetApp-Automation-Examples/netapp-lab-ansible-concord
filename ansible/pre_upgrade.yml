@@ -21,10 +21,9 @@
       password: "{{ ontap_password }}"
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
-
   tasks:
   - block: 
-    - name: Get cluster nodes info
+    - name: Get cluster nodes info (`netapp.ontap.na_ontap_rest_info`)
       include_tasks: tasks/rest_info.yml
       vars: 
         gather_subset: 
@@ -62,7 +61,9 @@
 
   - name: Get the image into each node's package repo
     block:
-    - name: Check to see if the package has already been uploaded
+    - name: |
+        Check to see if the package has already been uploaded
+        (`system node image show`)
       netapp.ontap.na_ontap_rest_cli: 
         command: 'system/node/image'
         params: 
@@ -184,7 +185,9 @@
         verb: "PATCH"
       register: set_new_node_image
 
-    - name: Confirm {{ new_image_name }} {{ ontap_package_version }} is set to default
+    - name: |
+        Confirm {{ new_image_name }} {{ ontap_package_version }} is set to default
+        (`system node image show`)
       netapp.ontap.na_ontap_rest_cli: 
         command: 'system/node/image'
         params: 
@@ -213,7 +216,9 @@
 
   - name: "Disable autogiveback"
     block: 
-    - name: Disable auto-giveback on all nodes (`storage failover modify -auto-giveback false -nodes *`)  
+    - name: |
+        Disable auto-giveback on all nodes 
+        (`storage failover modify -auto-giveback false -nodes *`)  
       netapp.ontap.na_ontap_rest_cli: 
         command: 'storage/failover'
         params:   
@@ -227,7 +232,9 @@
       ansible.builtin.debug: 
         var: update_autogiveback
 
-    - name: Get auto-giveback status after update command
+    - name: |
+        Get auto-giveback status after update command
+        (`storage failover show -fields auto-giveback`)
       netapp.ontap.na_ontap_rest_cli: 
         command: 'storage/failover'
         params: 
@@ -252,7 +259,7 @@
 
   - name: Kick off autosupports 
     block: 
-    - name: Get number of nodes
+    - name: Get number of nodes (`netapp.ontap.na_ontap_rest_info`)
       include_tasks: tasks/rest_info.yml
       vars: 
         gather_subset: 
@@ -268,8 +275,10 @@
           MAINT={{ maint_hours }}h Starting Non-Disruptive Upgrade to {{ ontap_package_version }}
     
     # https://kb.netapp.com/onprem/ontap/os/How_to_suppress_automatic_case_creation_during_scheduled_maintenance_windows_-_ONTAP_9
-    - name: "Trigger maintenance autosupports (-type all -message '{{ autosupport_message }}'"
-      na_ontap_autosupport_invoke:
+    - name: |
+        Trigger maintenance autosupports
+        (`netapp.ontap.na_ontap_autosupport_invoke` type: all message: '{{ autosupport_message }}')
+      netapp.ontap.na_ontap_autosupport_invoke:
         autosupport_message: "{{ autosupport_message }}"
         type: all
 

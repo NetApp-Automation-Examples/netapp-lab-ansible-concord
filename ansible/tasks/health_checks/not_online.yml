@@ -1,4 +1,6 @@
-- name: "Get all {{ online_object_check }} that are not online/running"
+- name: |
+    Get all {{ online_object_check }} that are not online/running
+    (`netapp.ontap.na_ontap_rest_info`)
   include_tasks: tasks/rest_info.yml
   vars: 
     gather_subset: "{{ online_object_check }}"
