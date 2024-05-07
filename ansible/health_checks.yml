@@ -13,7 +13,6 @@
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
   vars:
-    ontap_package_version: ""
     summary_failures: []
     summary_warnings: []
     summary_logs: []
@@ -612,14 +611,6 @@
           log: 
             uptime_and_os: "{{ uptime_and_os }}"
       
-      - name: Fail playbook if the cluster is already at '{{ ontap_package_version }}'
-        include_tasks: tasks/add_failure.yml
-        vars: 
-          failure: 
-            issue: "New image target {{ ontap_package_version }} is already the current version for all nodes"
-            details: "{{ uptime_and_os }}"
-        when: ontap_package_version | length > 0 and uptime_and_os | map(attribute='version') | unique == [ontap_package_version]
-
       - name: Show summary_logs
         ansible.builtin.debug: 
           var: summary_logs 

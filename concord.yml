@@ -13,10 +13,10 @@ configuration:
     ontap_creds: ${crypto.exportCredentials('Default', 'OntapCreds', null)}
     health_checks_failed: false
     ping_test_failures: false
-    health_checks_retry: 3
+    health_checks_retry: 5
     skip_ping_test: false
-    ping_tests_retry: 3
-    takeover_giveback_retry: 3
+    ping_tests_retry: 5
+    takeover_giveback_retry: 5
     # Do mock ping tests for now
     mock: true
     default_slack_text: ""
@@ -35,7 +35,6 @@ forms:
 
   health_checks_form: 
   - clusters:  { label: "Cluster(s)", type: "string+", readonly: false, allow: "${cluster_choices}"}
-  - package_version: { label: "Target ONTAP Package version, i.e. 9.10.1P15",  type: "string", allow: "${ontap_package_versions}"}
 
   #- simulate_failure: { label: "Simulate failure?", type: "boolean" }
     
@@ -45,8 +44,7 @@ flows:
     - call: health_checks 
       in: 
         health_checks_clusters: ${health_checks_form.clusters} 
-        target_package_version: ${health_checks_form.package_version}
-    - log: "Completed health checks"
+    - log: "Completed pre-upgrade health checks"
 
     - form: upgrade_form
       fields:
@@ -55,10 +53,11 @@ flows:
           allow: "${health_checks_form.clusters}", value: "${health_checks_form.clusters}"
         }
       - image_url: { label: "ONTAP Image URL", type: "string" }
+      - package_version: { label: "Target ONTAP Package version, i.e. 9.10.1P15",  type: "string", allow: "${ontap_package_versions}"}
     - set:
         upgrade_clusters: ${upgrade_form.clusters}
         upgrade_image_url: ${upgrade_form.image_url}
-        upgrade_package_version: ${health_checks_form.package_version}
+        upgrade_package_version: ${upgrade_form.package_version}
     - log: "Get LIFs for ping test"
     - task: ansible
       in:
@@ -131,7 +130,13 @@ flows:
         extraVars:
           clusters: ${upgrade_clusters} 
           ontap_creds: ${ontap_creds}
-      out: pre_upgrade
+      out: post_upgrade
+    - log: "Post upgrade results: ${post_upgrade}"
+    - call: health_checks 
+      in: 
+        health_checks_clusters: ${health_checks_form.clusters} 
+    - log: "Completed post-upgrade health checks"
+
 
   upgrade_node: 
     - log: "nodes = ${nodes_list}"
