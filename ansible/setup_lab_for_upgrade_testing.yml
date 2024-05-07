@@ -1,0 +1,54 @@
+---
+- name: The Tortured Upgrades Department
+  hosts: "{{ ansible_limit | default('localhost') }}"
+  gather_facts: no
+  collections:
+    - netapp.ontap
+  become: yes
+  module_defaults:    
+    group/netapp.ontap.netapp_ontap:      
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    ntp_servers: 
+      - time1.google.com
+      - time.facebook.com
+      - time.apple.com
+      - time.cloudflare.com     
+  tasks:
+  - name: Get cluster info 
+    include_tasks: tasks/rest_info.yml
+    vars: 
+      gather_subset: 
+        - cluster
+      parameters:
+        fields: ['*']
+
+  - name: Set cluster_info
+    ansible.builtin.set_fact: 
+      cluster_info: "{{ ontap_rest_info['cluster'] }}"
+
+  - name: Make sure key is set if there are no NTP servers
+    ansible.builtin.set_fact: 
+      cluster_info: "{{ cluster_info | combine({'ntp_servers': []}) }}"
+    when: cluster_info.ntp_servers is undefined
+
+  - name: Add NTP servers if there aren't at least 3
+    netapp.ontap.na_ontap_ntp:
+      state: present
+      version: auto
+      server_name: "{{ server_name }}"
+    loop: "{{ ntp_servers }}"
+    when: cluster_info.ntp_servers | length < 3
+
+  - name: Get root aggrs
+
+  - name: Resize root volumes to 20gb 
+    netapp.ontap.na_ontap_volume:
+      state: present
+      name: vol0
+    aggregate_name: "{{ item }}"
+    vserver: "{{ vserver }}"
