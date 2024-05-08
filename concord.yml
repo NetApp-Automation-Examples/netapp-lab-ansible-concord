@@ -112,6 +112,7 @@ flows:
           clusters: ${upgrade_clusters} 
           ontap_creds: ${ontap_creds}
           ontap_package_version: ${upgrade_package_version}
+          ontap_package_url: ${upgrade_image_url}
       out: pre_upgrade
     - log: Run the takeover_giveback on each ha pair sequentially 
     - call: upgrade_node
