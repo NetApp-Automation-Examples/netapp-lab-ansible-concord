@@ -2,9 +2,9 @@
 - name: The Tortured Upgrades Department
   hosts: "{{ ansible_limit | default('localhost') }}"
   gather_facts: no
+  connection: 'local'
   collections:
     - netapp.ontap
-  become: yes
   module_defaults:    
     group/netapp.ontap.netapp_ontap:      
       hostname: "{{ ontap_hostname }}"
@@ -19,6 +19,10 @@
       - time.apple.com
       - time.cloudflare.com     
   tasks:
+  - name: Log
+    ansible.builtin.debug: 
+      var: validate_certs
+
   - name: Get cluster info 
     include_tasks: tasks/rest_info.yml
     vars: 
@@ -40,15 +44,49 @@
     netapp.ontap.na_ontap_ntp:
       state: present
       version: auto
-      server_name: "{{ server_name }}"
+      server_name: "{{ item }}"
     loop: "{{ ntp_servers }}"
     when: cluster_info.ntp_servers | length < 3
 
   - name: Get root aggrs
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'storage/aggregate'
+      params: 
+        root: true
+        fields: "size,node"
+      verb: "GET"
+    register: root_aggrs 
 
-  - name: Resize root volumes to 20gb 
-    netapp.ontap.na_ontap_volume:
-      state: present
-      name: vol0
-    aggregate_name: "{{ item }}"
-    vserver: "{{ vserver }}"
+  - name: "Log of root_aggrs"
+    ansible.builtin.debug: 
+      var: root_aggrs
+
+  - name: Add spare disk to root aggrs when less than 10GB
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'storage/aggregate/add-disks'
+      body: 
+        aggregate: "{{ item.aggregate }}"
+        diskcount: 1
+      verb: "POST"
+    loop: "{{ root_aggrs.msg.records }}"
+    when: item.size < 10000000000
+
+  - name: Get root volumes
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'volume'
+      params: 
+        fields: size
+        volume: vol0
+      verb: "GET"
+    register: root_vols 
+
+  - name: Make sure root volume is 18GB
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'volume/size'
+      body: 
+        vserver: "{{ item.vserver }}"
+        volume: "{{ item.volume }}"
+        new-size: "18g"
+      verb: "POST"
+    loop: "{{ root_vols.msg.records }}"
+    when: item.size < 18000000000
