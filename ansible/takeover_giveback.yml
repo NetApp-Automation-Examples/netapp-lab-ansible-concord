@@ -90,11 +90,12 @@
           and ha_partner.ha.giveback.state in ['nothing_to_giveback', 'not_attempted']
           and ha_partner.ha.takeover.state == 'not_attempted'
   
-  - name: Set version_mismatch
+  - name: Set version_mismatch and takeover_option = allow-version-mismatch
     ansible.builtin.set_fact: 
       version_mismatch: True
-      #takeover_option: allow-version-mismatch
-    when: node_info.version.full != ha_partner.version.full
+      takeover_option: allow-version-mismatch
+    when: node_info.version.major != ha_partner.version.major 
+          or node_info.version.generation != ha_partner_version.generation
 
   - name: Log of current uptime, os version, and failover state 
     ansible.builtin.debug:
@@ -110,6 +111,7 @@
         partner takeover = {{ ha_partner.ha.takeover }}
         partner giveback = {{ ha_partner.ha.giveback }}
         version_mismatch = {{ version_mismatch if version_mismatch is defined }}
+        takeover_option = {{ takeover_option }}
         at_stasis = {{ at_stasis if at_stasis is defined }}
         in_takeover = {{ in_takeover if in_takeover is defined }}
         doing_giveback = {{ doing_giveback if doing_giveback is defined }}
