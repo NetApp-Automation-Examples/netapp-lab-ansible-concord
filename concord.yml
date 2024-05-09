@@ -35,17 +35,20 @@ forms:
 
   health_checks_form: 
   - clusters:  { label: "Cluster(s)", type: "string+", readonly: false, allow: "${cluster_choices}"}
-
+  - skip_first_health_check: { label: "Skip initial health check?", type: "boolean"}
   #- simulate_failure: { label: "Simulate failure?", type: "boolean" }
     
 flows:
   main:  
     - form: health_checks_form
-    - call: health_checks 
-      in: 
-        health_checks_clusters: ${health_checks_form.clusters} 
-    - log: "Completed pre-upgrade health checks"
-
+    - if: ${health_checks_form.skip_first_health_check == true}
+      then:
+      - call: health_checks 
+        in: 
+          health_checks_clusters: ${health_checks_form.clusters} 
+      - log: "Completed pre-upgrade health checks"
+      else: 
+      - log: "Skipped pre-upgrade health checks"
     - form: upgrade_form
       fields:
       - clusters:  { 
