@@ -41,7 +41,7 @@ forms:
 flows:
   main:  
     - form: health_checks_form
-    - if: ${health_checks_form.skip_first_health_check == true}
+    - if: ${health_checks_form.skip_first_health_check == false}
       then:
       - call: health_checks 
         in: 
