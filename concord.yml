@@ -84,13 +84,7 @@ flows:
     - log: ${get_lifs}
     - set: 
         lifs_to_test: ${get_lifs.lifs_to_test}
-    - log: "Pass LIFs to ping test"
     # TODO - add review/trim LIFs step
-    - call: ping_tests
-      in: 
-        ping_test_clusters: ${upgrade_clusters} 
-        ping_test_lifs: ${lifs_to_test}
-
     - log: "Get list of HA pairs to loop through"    
     - task: ansible
       in:
@@ -114,6 +108,10 @@ flows:
     - if: ${health_checks_form.skip_first_health_check == false}
       then:
       - log: "Run the pre-upgrade tasks"
+      - call: ping_tests
+        in: 
+          ping_test_clusters: ${upgrade_clusters} 
+          ping_test_lifs: ${lifs_to_test}
       - task: ansible
         in:
           dockerImage: ${docker_image}
