@@ -11,5 +11,8 @@ ansible_user=administrator
 cluster1 ontap_cluster_lif=192.168.0.101
 cluster2 ontap_cluster_lif=192.168.0.102
 
+[clab_ontap]
+clab1 ontap_cluster_lif=10.61.90.144
+
 [ontap_clusters:children]
 lab_ontap

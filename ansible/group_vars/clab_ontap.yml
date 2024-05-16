@@ -1,0 +1,6 @@
+ontap_base_domain: 
+ontap_hostname: "{{ ontap_cluster_lif }}" 
+ontap_username: "{{ ontap_creds.username | default('admin')}}"
+ontap_password: "{{ ontap_creds.password | default(lookup('env', 'ONTAP_PASSWORD')) }}"
+https: true
+validate_certs: false
