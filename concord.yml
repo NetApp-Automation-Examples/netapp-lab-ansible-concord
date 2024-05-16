@@ -17,8 +17,8 @@ configuration:
     skip_ping_test: false
     ping_tests_retry: 5
     takeover_giveback_retry: 5
-    # Do mock ping tests for now
-    mock: true
+    #Set to true for mock ping tests 
+    mock: false
     default_slack_text: ""
     default_slack_emoji: ":concord:"
 
