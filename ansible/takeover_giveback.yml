@@ -112,6 +112,7 @@
         partner giveback = {{ ha_partner.ha.giveback }}
         version_mismatch = {{ version_mismatch if version_mismatch is defined }}
         takeover_option = {{ takeover_option }}
+        version_mismatch = {{ version_mismatch is version_mismatch is defined }}
         at_stasis = {{ at_stasis if at_stasis is defined }}
         in_takeover = {{ in_takeover if in_takeover is defined }}
         doing_giveback = {{ doing_giveback if doing_giveback is defined }}
@@ -146,7 +147,7 @@
           override-vetoes: "{{ override_vetoes }}"
         verb: "POST"
       register: takeover
-    when: at_stasis is defined 
+    when: at_stasis is defined or version_mismatch is defined
 
   - name: Check takeover status until we get "waiting for giveback"
     block: 
