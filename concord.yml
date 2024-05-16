@@ -49,10 +49,12 @@ flows:
       - log: "Completed pre-upgrade health checks"
       else: 
       - log: "Skipped pre-upgrade health checks"
+    - log: ${health_checks_form.clusters}
     - if: ${health_checks_form.clusters == 'clab1'}
       then: 
       - set: 
           ontap_creds: ${crypto.exportCredentials('Default', 'OntapCredsClab', null)}
+      - log: "Should be overriding ontap_creds with ${ontap_creds}"
     - form: upgrade_form
       fields:
       - clusters:  { 
