@@ -41,12 +41,10 @@ forms:
 flows:
   main:  
     - form: health_checks_form
-    - log: ${health_checks_form.clusters}
     - if: ${health_checks_form.clusters == ['clab1']}
       then: 
       - set: 
           ontap_creds: ${crypto.exportCredentials('Default', 'OntapCredsClab', null)}
-      - log: "Should be overriding ontap_creds with ${ontap_creds}"
     - if: ${health_checks_form.skip_first_health_check == false}
       then:
       - call: health_checks 
