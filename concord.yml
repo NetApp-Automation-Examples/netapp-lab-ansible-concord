@@ -61,10 +61,13 @@ flows:
         }
       - image_url: { label: "ONTAP Image URL", type: "string" }
       - package_version: { label: "Target ONTAP Package version, i.e. 9.10.1P15",  type: "string", allow: "${ontap_package_versions}"}
+      - skip_pre_upgrade_steps: { label: "Skip pre-upgrade steps? (image upload, autosupport, etc)", type: "boolean"}
+
     - set:
         upgrade_clusters: ${upgrade_form.clusters}
         upgrade_image_url: ${upgrade_form.image_url}
         upgrade_package_version: ${upgrade_form.package_version}
+        skip_pre_upgrade: ${upgrade_form.skip_pre_upgrade_steps}
     - log: "Get LIFs for ping test"
     - task: ansible
       in:
@@ -108,19 +111,23 @@ flows:
       error:
       - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
-    - log: "Run the pre-upgrade tasks"
-    - task: ansible
-      in:
-        dockerImage: ${docker_image}
-        configFile: ${ansible_config}
-        inventoryFile: ${ansible_inventory}
-        playbook: ansible/pre_upgrade.yml
-        extraVars:
-          clusters: ${upgrade_clusters} 
-          ontap_creds: ${ontap_creds}
-          ontap_package_version: ${upgrade_package_version}
-          ontap_package_url: ${upgrade_image_url}
-      out: pre_upgrade
+    - if: ${health_checks_form.skip_first_health_check == false}
+      then:
+      - log: "Run the pre-upgrade tasks"
+      - task: ansible
+        in:
+          dockerImage: ${docker_image}
+          configFile: ${ansible_config}
+          inventoryFile: ${ansible_inventory}
+          playbook: ansible/pre_upgrade.yml
+          extraVars:
+            clusters: ${upgrade_clusters} 
+            ontap_creds: ${ontap_creds}
+            ontap_package_version: ${upgrade_package_version}
+            ontap_package_url: ${upgrade_image_url}
+        out: pre_upgrade
+      else: 
+      - log: "Skipping pre-upgrade steps per form selection."
     - log: Run the takeover_giveback on each ha pair sequentially 
     - call: upgrade_node
       in: 
