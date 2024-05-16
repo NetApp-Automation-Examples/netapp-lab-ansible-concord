@@ -42,7 +42,7 @@ flows:
   main:  
     - form: health_checks_form
     - log: ${health_checks_form.clusters}
-    - if: ${health_checks_form.clusters == [clab1]}
+    - if: ${health_checks_form.clusters == ['clab1']}
       then: 
       - set: 
           ontap_creds: ${crypto.exportCredentials('Default', 'OntapCredsClab', null)}
