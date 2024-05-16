@@ -95,7 +95,7 @@
       version_mismatch: True
       takeover_option: allow-version-mismatch
     when: node_info.version.major != ha_partner.version.major 
-          or node_info.version.generation != ha_partner_version.generation
+          or node_info.version.generation != ha_partner.version.generation
 
   - name: Log of current uptime, os version, and failover state 
     ansible.builtin.debug:
