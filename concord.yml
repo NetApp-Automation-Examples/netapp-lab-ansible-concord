@@ -68,6 +68,7 @@ flows:
         upgrade_image_url: ${upgrade_form.image_url}
         upgrade_package_version: ${upgrade_form.package_version}
         skip_pre_upgrade: ${upgrade_form.skip_pre_upgrade_steps}
+    # TODO - save some runtime, combine get_lifs with get_ha_pairs
     - log: "Get LIFs for ping test"
     - task: ansible
       in:
@@ -84,7 +85,7 @@ flows:
     - log: ${get_lifs}
     - set: 
         lifs_to_test: ${get_lifs.lifs_to_test}
-    # TODO - add review/trim LIFs step
+
     - log: "Get list of HA pairs to loop through"    
     - task: ansible
       in:
@@ -112,6 +113,7 @@ flows:
         in: 
           ping_test_clusters: ${upgrade_clusters} 
           ping_test_lifs: ${lifs_to_test}
+      # TODO: update order of operations to match CHG template
       - task: ansible
         in:
           dockerImage: ${docker_image}
