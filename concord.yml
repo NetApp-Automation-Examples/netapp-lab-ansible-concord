@@ -76,7 +76,7 @@ flows:
       in: 
         ping_test_clusters: ${upgrade_clusters} 
         ping_test_lifs: ${lifs_to_test}
-      out: 
+      #out: 
 
   main:  
     - form: health_checks_form
