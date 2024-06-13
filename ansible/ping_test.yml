@@ -22,6 +22,10 @@
     lifs_that_failed: []
     lif_ping_test_results: ""
   tasks:
+  - name: Dump of lifs_to_ping_test
+    ansible.builtin.debug: 
+      var: lifs_to_ping_test
+
   - name: Log of lifs to ping test
     ansible.builtin.debug: 
       msg: | 

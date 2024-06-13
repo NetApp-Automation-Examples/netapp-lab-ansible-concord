@@ -354,7 +354,6 @@ flows:
           clusters: ${ontap_clusters} 
           lifs_to_test: ${lifs_to_test}
           ontap_creds: ${ontap_creds}
-          lifs_ping_test_baseline: ${lifs_baseline_ping_test_results}
         outVars:
           - lif_ping_test_results
           - lifs_that_failed
