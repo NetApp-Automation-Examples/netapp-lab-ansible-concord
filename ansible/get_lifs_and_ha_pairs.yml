@@ -51,7 +51,7 @@
     ansible.builtin.set_fact: 
       lifs_to_test: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
 
-  - name: Get HA info 
+  - name: Get nodes not at {{ target_ontap_version }} 
     include_tasks: tasks/rest_info.yml
     vars: 
       gather_subset: 
@@ -64,10 +64,17 @@
     ansible.builtin.set_fact: 
       nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
 
+  - name: Log of nodes not at {{ target_ontap_version }}
+    ansible.builtin.debug: 
+      msg: >
+        {% for node in nodes %}
+          {{ node.name }} - {{ node.version.full }}
+        {% endfor %}
+
   - name: Set ha_pairs_to_upgrade fact
     ansible.builtin.set_fact: 
       ha_pairs_to_upgrade: "{{ nodes | ontap_ha_pairs }}"
 
-  - name: Log of ha_pairs
+  - name: Log of ha_pairs_to_upgrade
     ansible.builtin.debug: 
       var: ha_pairs_to_upgrade
