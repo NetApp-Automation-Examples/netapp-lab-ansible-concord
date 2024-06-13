@@ -249,7 +249,7 @@ flows:
     - call: review 
 
 
- ping_tests:
+  ping_tests:
     - call: ping_test_playbook
       in:
         mock: ${mock}
