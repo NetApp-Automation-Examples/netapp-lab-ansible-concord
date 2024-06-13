@@ -248,7 +248,23 @@ flows:
     - log: "Health checks playbook ran succesfully, review before proceeding"
     - call: review 
 
-  ping_tests:
+
+ ping_tests:
+    - call: ping_test_playbook
+      in:
+        mock: ${mock}
+        ontap_clusters: ${ping_test_clusters}
+        lifs_to_test: ${ping_test_lifs}
+      retry: 
+        in: 
+          ping_test_failures: true
+        times: ${ping_tests_retry}
+      out: ping_test_results
+    - log: ${ping_test_results}
+    - log: "Ping tests playbook ran succesfully, review before proceeding"
+    - call: review_ping_tests
+    
+  ping_tests_dev:
     - call: ping_test_playbook
       in:
         mock: ${mock}
