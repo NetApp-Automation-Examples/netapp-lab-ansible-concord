@@ -1,0 +1,41 @@
+---
+- name: "Get '{{ lifs_query.services | join(',') }}' LIFs that are state={{ lifs_query.state }} from {{ clusters | join(',') }}"
+  hosts: "{{ clusters | default('localhost') }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    lifs_to_test: []
+    # The basic role to services filter mapping is as follows: 
+    #   -role data = data-core
+    #   -role cluster = cluster-core
+    #   -role cluster-mgmt,node-mgmt = management-core
+    #   -role intercluster = intercluster-core
+    lifs_query:
+      services: ['data-core'] 
+      state: up
+      fields: "location.home_node.name,location.home_port.name,location.port.name,\
+                location.is_home,location.node.name,ip.address"
+  tasks:
+  - name: Get {{ lifs_query.services }} LIF(s) with a state of '{{ lifs_query.state }}' to ping tests
+    include_tasks: tasks/rest_info.yml
+    vars: 
+      gather_subset: 
+        - network/ip/interfaces
+      parameters:
+        fields: "{{ lifs_query.fields }}"
+        enabled: true
+        state: "{{ lifs_query.state }}"
+        services: "{{ lifs_query.services | join(',') }}"
+
+  - name: Set lifs_to_test fact
+    ansible.builtin.set_fact: 
+      lifs_to_test: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"

@@ -21,6 +21,7 @@
     lifs_to_ping_test: "{{ lifs_to_test[inventory_hostname] }}"
     lifs_that_failed: []
     lif_ping_test_results: ""
+    lif_ping_test_baseline: {{ lifs_baseline_ping_test[inventory_hostname] }}
   tasks:
   - name: Log of lifs to ping test
     ansible.builtin.debug: 
