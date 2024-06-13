@@ -65,6 +65,8 @@ flows:
     - set: 
         lifs_to_test: ${get_lifs_and_ha_pairs.lifs_to_test}
         ha_pairs_to_upgrade: ${get_lifs_and_ha_pairs.ha_pairs_to_upgrade}
+        # for the time being don't mess with the "js" file 
+        ha_pairs: ${get_lifs_and_ha_pairs.ha_pairs_to_upgrade}
     - log: "lifs_to_test = ${lifs_to_test}"
     - log: "ha_pairs_to_upgrade = ${ha_pairs_to_upgrade}"
     - script: scripts/sequential_nodes_list.js
