@@ -6,7 +6,7 @@
     - netapp.ontap
   become: yes
   vars_files: 
-    - http_server
+    - http_server.yaml
   tasks:
   - name: Create http server directory
     file:

@@ -6,7 +6,7 @@
   collections:
     - netapp.ontap
   vars_files: 
-    - http_server
+    - http_server.yaml
   vars:
     autosupport_message: "MAINT=END Completed ONTAP Upgrade"
   module_defaults:    

@@ -6,7 +6,7 @@
   collections:
     - netapp.ontap
   vars_files: 
-    - http_server
+    - http_server.yaml
   vars:
     ontap_image: 9101P15_q_image.tgz
     ontap_package_version: 9.10.1P15
