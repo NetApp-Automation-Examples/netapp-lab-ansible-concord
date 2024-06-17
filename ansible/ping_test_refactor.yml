@@ -1,0 +1,79 @@
+---
+- name: "Given a list of LIFs, compare baseline ping test result with a new run of ping tests"
+  hosts: "{{ clusters | default('localhost') }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    mock: True
+    test_count: 2
+    fail_threshold: 2
+    ping_count: 5
+    test_pause: 10
+    lifs_to_ping_test: "{{ lifs_to_test[inventory_hostname] }}"
+    lifs_that_failed: []
+    lifs_new_ping_test_results: ""
+    lifs_baseline_ping_test_results: "{{ lifs_baseline_test[inventory_hostname] }}"
+    lifs_test_results_diff: []
+  tasks:
+  - name: Dump of lifs_to_ping_test
+    ansible.builtin.debug: 
+      var: lifs_to_ping_test
+
+  - name: Log of lifs to ping test
+    ansible.builtin.debug: 
+      msg: | 
+          {% for lif in  lifs_to_ping_test %}
+            - {{ lif.ip.address }} ({{ lif.name }})
+          {% endfor %}
+  
+  - meta: end_host
+    when: lifs_to_ping_test | length == 0
+
+  - name: "{{ '(MOCK RUN, will not actually ping)' if mock == True }} For above referenced LIFs, `ping -c {{ ping_count }} <ip>` {{ test_count }} 
+        times with a pause of {{ test_pause }} seconds between runs "
+    ansible.builtin.script: 
+      cmd: "scripts/ping_test.py {{ lifs_to_ping_test | to_json | b64encode }} \ 
+          {{ ping_count }} {{ test_count }} {{ test_pause }} {{ 'mock' if mock == True }}"
+    register: lif_ping_test_return
+
+  - name: Set lif_ping_test_results fact
+    ansible.builtin.set_fact: 
+      lif_ping_test_results: "{{ lif_ping_test_return.stdout }}"
+
+  - name: Set lifs_that_failed fact
+    ansible.builtin.set_fact: 
+      lifs_that_failed: "{{ lif_ping_test_results | selectattr('failed_pings', 'ge', fail_threshold) }}"
+      lifs_that_ping: "{{ lif_ping_test_results | selectattr('failed_pings', 'lt', fail_threshold) }}"
+  
+  - name: Set lifs_ping_test_results
+    ansible.builtin.set_fact: 
+      lifs_ping_test_results:
+        failed: 
+          count: "{{ lifs_that_failed | length }}"
+          records: "{{ lifs_that_failed }}"
+        passed: 
+          count: "{{ lifs_that_ping | length }}"
+          records: "{{ lifs_that_ping }}"
+    
+  - name: Set lifs_baseline_ping_test_results if this is the first run
+    ansible.builtin.set_fact: 
+      lifs_baseline_ping_test_results: "{{ lifs_ping_test_results }}"
+    when: lifs_baseline_ping_test_results | length == 0
+  
+  - name: They are the same
+    ansible.builtin.debug: 
+      msg: "lifs_baseline_ping_test_results == lifs_ping_test_results"
+    when: lifs_ping_test_results == lifs_baseline_ping_test_results
+
+  # TODO 
+  # Set diff var
+  
