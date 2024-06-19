@@ -46,7 +46,7 @@ flows:
         upgrade_image_url: "http://dummy.url"
         upgrade_package_version: "9.10.1P15"
         skip_pre_upgrade: False
-    - log: "Get LIFs for ping test, HA Pairs that haven't been upgraded yet"
+    - log: "Get LIFs for ping test and HA Pairs that haven't been upgraded yet"
     - task: ansible
       in:
         dockerImage: ${docker_image}
@@ -74,11 +74,10 @@ flows:
       - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
     - log: "Run baseline ping test"
-    - call: ping_tests
+    - call: ping_tests_refactor
       in: 
         ping_test_clusters: ${upgrade_clusters} 
         ping_test_lifs: ${lifs_to_test}
-      #out: 
 
   main:  
     - form: health_checks_form
@@ -264,22 +263,16 @@ flows:
     - log: "Ping tests playbook ran succesfully, review before proceeding"
     - call: review_ping_tests
     
-  ping_tests_dev:
-    - call: ping_test_playbook
+  ping_tests_refactor:
+    - call: ping_test_playbook_refactor
       in:
         mock: ${mock}
         ontap_clusters: ${ping_test_clusters}
         lifs_to_test: ${ping_test_lifs}
-      retry: 
-        in: 
-          ping_test_failures: true
-        times: ${ping_tests_retry}
       out: ping_test_results
     - log: ${ping_test_results}
-    - if: ${ping_test_baseline != False} 
-      then: 
-      - log: "Ping tests playbook ran succesfully, review diff with baseline before proceeding"
-      - call: review_ping_tests
+    - log: "Ping tests playbook ran succesfully, review diff with baseline before proceeding"
+    - call: review_ping_tests
 
 
   review:
@@ -349,6 +342,26 @@ flows:
         configFile: ${ansible_config}
         inventoryFile: ${ansible_inventory}
         playbook: ansible/ping_test.yml
+        extraVars:
+          mock: ${mock}
+          clusters: ${ontap_clusters} 
+          lifs_to_test: ${lifs_to_test}
+          ontap_creds: ${ontap_creds}
+        outVars:
+          - lif_ping_test_results
+          - lifs_that_failed
+      out: ping_tests
+    - set:
+        ping_test_results: ${ping_tests}
+
+  ping_test_playbook_refactor: 
+    - log: "mock value = ${mock}"
+    - task: ansible
+      in:
+        dockerImage: ${docker_image}
+        configFile: ${ansible_config}
+        inventoryFile: ${ansible_inventory}
+        playbook: ansible/ping_test_refactor.yml
         extraVars:
           mock: ${mock}
           clusters: ${ontap_clusters} 
