@@ -83,13 +83,12 @@ flows:
     - set: 
         baseline_ping_test_results: ${ping_test_results.lif_ping_test_results}
     - log: ${baseline_ping_test_results}
-
-    # - call: ping_tests_refactor
-    #   in: 
-    #     ping_test_clusters: ${upgrade_clusters} 
-    #     ping_test_lifs: ${lifs_to_test}
-
-
+    - call: ping_tests_refactor
+      in: 
+        ping_test_clusters: ${upgrade_clusters} 
+        ping_test_lifs: ${lifs_to_test}
+        ping_test_baseline: ${baseline_ping_test_results}
+        
   main:  
     - form: health_checks_form
     - if: ${health_checks_form.clusters == ['clab1']}
@@ -280,10 +279,8 @@ flows:
         mock: ${mock}
         ontap_clusters: ${ping_test_clusters}
         lifs_to_test: ${ping_test_lifs}
-
+        lifs_baseline_ping_test: ${baseline_ping_test_results}
       out: ping_test_results
-    - set: 
-        baseline_ping_test_results: ${ping_test_lifs.lif_ping_test_results}
     - log: ${ping_test_results}
     - log: "Ping tests playbook ran succesfully, review diff with baseline before proceeding"
     - call: review_ping_tests
