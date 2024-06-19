@@ -78,8 +78,7 @@ flows:
       in: 
         ping_test_clusters: ${upgrade_clusters} 
         ping_test_lifs: ${lifs_to_test}
-    - log: "Will ping_test_results work outside the -call: block?"
-    - log: ${ping_test_results}
+    - log: ${baseline_ping_test_results}
 
   main:  
     - form: health_checks_form
@@ -272,6 +271,8 @@ flows:
         ontap_clusters: ${ping_test_clusters}
         lifs_to_test: ${ping_test_lifs}
       out: ping_test_results
+    - set: 
+        baseline_ping_test_results: ${ping_test_lifs.lif_ping_test_results}
     - log: ${ping_test_results}
     - log: "Ping tests playbook ran succesfully, review diff with baseline before proceeding"
     - call: review_ping_tests
