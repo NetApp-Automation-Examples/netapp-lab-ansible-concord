@@ -61,23 +61,34 @@
         passed: 
           count: "{{ lifs_that_ping | length }}"
           records: "{{ lifs_that_ping }}"
-  
-  - name: Log of lifs_ping_test_results
-    ansible.builtin.debug: 
-      var: lifs_ping_test_results
-
+      
   - name: Set lifs_baseline_ping_test_results if this is the first run
     ansible.builtin.set_fact: 
       lifs_baseline_ping_test_results: "{{ lifs_ping_test_results }}"
     when: lifs_baseline_ping_test_results | length == 0
 
-  - name: Baseline test failures vs 
+  - name: Baseline test failures vs current test failures
     ansible.builtin.debug:
-      msg: "baseline = {{ lifs_baseline_ping_test_results.failed.count }} live test = {{ lifs_ping_test_results.failed.count }}"
+      msg: "baseline = {{ lifs_baseline_ping_test_results.failed.count }} current test = {{ lifs_ping_test_results.failed.count }}"
 
   - name: If the baseline == latest test run, end run for the host
     ansible.builtin.meta: end_host 
     when: lifs_ping_test_results == lifs_baseline_ping_test_results
+
+  - name: Log of lifs_ping_test_results
+    ansible.builtin.debug: 
+      var: lifs_ping_test_results
+
+  - name: Log of lifs_baseline_ping_test_results
+    ansible.builtin.debug: 
+      var: lifs_baseline_ping_test_results
+
+  - name: Log of checksums
+    ansible.builtin.debug: 
+      msg: |
+        baseline = {{lifs_baseline_ping_test_results | checksum }}
+
+        current = {{lifs_ping_test_results | checksum }}
 
   - name: If baseline is different from the latest run, set lifs_test_results_diff 
     block: 
@@ -98,15 +109,19 @@
       ansible.builtin.set_fact:
         lifs_diff_ping_test_results:
           failed: 
-            count: "{{ lifs_ping_test_results.failed.count | int - lifs_baseline_ping_test_results.failed.count | int }}"
-            records: "{{ lifs_diff_ping_test_results.failed.records | default([]) + [item]}}"
-      loop: "{{ lifs_ping_test_results.failed.records }}"
-      when: item not in lifs_baseline_ping_test_results.failed.records
+            diff_count: "{{ lifs_ping_test_results.failed.count | int - lifs_baseline_ping_test_results.failed.count | int }}"
+            diff_records: "{{ lifs_ping_test_results.failed.records | difference(lifs_baseline_ping_test_results.failed.records) }}"
 
     - name: Log of lifs_diff_ping_test_results
       ansible.builtin.debug:
         var: lifs_diff_ping_test_results
     #- name: set lifs_test_results_diff
+
+    - name: Show in git diff format
+      ansible.utils.fact_diff:
+        before: "{{ lifs_baseline_ping_test_results }}"
+        after: "{{ lifs_ping_test_results }}"
+        
     when: lifs_ping_test_results != lifs_baseline_ping_test_results
   # Set diff var
   
