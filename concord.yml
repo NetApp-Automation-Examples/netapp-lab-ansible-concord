@@ -74,11 +74,21 @@ flows:
       - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
     - log: "Run baseline ping test"
-    - call: ping_tests_refactor
-      in: 
-        ping_test_clusters: ${upgrade_clusters} 
-        ping_test_lifs: ${lifs_to_test}
+    - call: ping_test_playbook_refactor
+      in:
+        mock: ${mock}
+        ontap_clusters: ${upgrade_clusters}
+        lifs_to_test: ${lifs_to_test}
+      out: ping_test_results
+    - set: 
+        baseline_ping_test_results: ${ping_test_lifs.lif_ping_test_results}
     - log: ${baseline_ping_test_results}
+
+    # - call: ping_tests_refactor
+    #   in: 
+    #     ping_test_clusters: ${upgrade_clusters} 
+    #     ping_test_lifs: ${lifs_to_test}
+
 
   main:  
     - form: health_checks_form
@@ -270,6 +280,7 @@ flows:
         mock: ${mock}
         ontap_clusters: ${ping_test_clusters}
         lifs_to_test: ${ping_test_lifs}
+
       out: ping_test_results
     - set: 
         baseline_ping_test_results: ${ping_test_lifs.lif_ping_test_results}
