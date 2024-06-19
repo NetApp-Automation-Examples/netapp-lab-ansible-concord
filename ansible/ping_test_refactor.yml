@@ -119,9 +119,14 @@
 
     - name: Show in git diff format
       ansible.utils.fact_diff:
-        before: "{{ lifs_baseline_ping_test_results }}"
-        after: "{{ lifs_ping_test_results }}"
-        
+        before: "{{ lifs_baseline_ping_test_results.failed }}"
+        after: "{{ lifs_ping_test_results.failed }}"
+      register: lifs_diff_failed_ping_test_results
+
+    - name: Log of lifs_diff_failed_ping_test_results
+      ansible.builtin.debug: 
+        var: lifs_diff_failed_ping_test_results
+
     when: lifs_ping_test_results != lifs_baseline_ping_test_results
   # Set diff var
   
