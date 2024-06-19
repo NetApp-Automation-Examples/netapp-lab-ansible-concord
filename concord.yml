@@ -284,7 +284,7 @@ flows:
         mock: ${mock}
         ontap_clusters: ${ping_test_clusters}
         lifs_to_test: ${ping_test_lifs}
-        lifs_baseline_ping_test: ${baseline_ping_test_results}
+        lifs_baseline_ping_test: ${ping_test_baseline}
       out: ping_test_results
     - log: ${ping_test_results}
     - log: "Ping tests playbook ran succesfully, review diff with baseline before proceeding"
