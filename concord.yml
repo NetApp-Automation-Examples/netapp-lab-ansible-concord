@@ -78,8 +78,8 @@ flows:
       in: 
         ping_test_clusters: ${upgrade_clusters} 
         ping_test_lifs: ${lifs_to_test}
-      out: baseline_ping_test_results
-    - log: ${baseline_ping_test_results}
+    - log: "Will ping_test_results work outside the -call: block?"
+    - log: ${ping_test_results}
 
   main:  
     - form: health_checks_form
