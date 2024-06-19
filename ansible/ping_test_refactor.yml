@@ -24,6 +24,9 @@
     lifs_baseline_ping_test_results: "{{ lifs_baseline_ping_test[inventory_hostname] | default([]) }}"
     lifs_diff_ping_test_results: []
   tasks:
+  - name: Let's see what is happening with lifs_baseline_ping_test_results
+    ansible.builtin.debug:
+      var: lifs_baseline_ping_test_results
 
   - name: Log of lifs to ping test
     ansible.builtin.debug: 
