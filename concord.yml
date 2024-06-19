@@ -82,12 +82,17 @@ flows:
       out: ping_test_results
     - set: 
         baseline_ping_test_results: ${ping_test_results.lif_ping_test_results}
+    - log: Baseline ping test results 
     - log: ${baseline_ping_test_results}
     - call: ping_tests_refactor
       in: 
         ping_test_clusters: ${upgrade_clusters} 
         ping_test_lifs: ${lifs_to_test}
         ping_test_baseline: ${baseline_ping_test_results}
+      loop: 
+        items: 
+          - 1
+          - 2
         
   main:  
     - form: health_checks_form
