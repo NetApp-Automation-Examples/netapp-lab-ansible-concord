@@ -59,6 +59,70 @@
     
     tags: ["image", "upload_check"]
 
+  - name: Kick off autosupports 
+    block: 
+    - name: Set maint_hours based on number of nodes
+      ansible.builtin.set_fact:
+        maint_hours: "{{ (1.5 * nodes_count | int) | round | int }}"
+    
+    - name: Build autosupport_message variable
+      ansible.builtin.set_fact:
+        autosupport_message: >
+          MAINT={{ maint_hours }}h Starting Non-Disruptive Upgrade to {{ ontap_package_version }}
+    
+    # https://kb.netapp.com/onprem/ontap/os/How_to_suppress_automatic_case_creation_during_scheduled_maintenance_windows_-_ONTAP_9
+    - name: |
+        Trigger maintenance autosupports
+        (`netapp.ontap.na_ontap_autosupport_invoke` type: all message: '{{ autosupport_message }}')
+      netapp.ontap.na_ontap_autosupport_invoke:
+        autosupport_message: "{{ autosupport_message }}"
+        type: all
+
+    tags: ["autosupport"]
+
+  - name: "Disable autogiveback"
+    block: 
+    - name: |
+        Disable auto-giveback on all nodes 
+        (`storage failover modify -auto-giveback false -nodes *`)  
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'storage/failover'
+        params:   
+          node: "*"
+        body: 
+          auto-giveback: "false"
+        verb: "PATCH"
+      register: update_autogiveback 
+
+    - name: "Log of update_autogiveback"
+      ansible.builtin.debug: 
+        var: update_autogiveback
+
+    - name: |
+        Get auto-giveback status after update command
+        (`storage failover show -fields auto-giveback`)
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'storage/failover'
+        params: 
+          fields: 'auto-giveback'
+        verb: "GET"
+      register: confirm_autogiveback
+
+    - name: Set confirm_autogiveback var 
+      ansible.builtin.debug: 
+        var: confirm_autogiveback
+
+    - name: Set autogiveback_still_true check 
+      ansible.builtin.set_fact:
+        autogiveback_still_true: "{{ confirm_autogiveback.msg.records | selectattr('auto_giveback', 'equalto', true) | list }}"
+
+    - name: Fail playbook if auto-giveback is not equal to true on all nodes
+      ansible.builtin.fail: 
+        msg: "auto-giveback should be set to false on all nodes and is not. See logs above."
+      when: autogiveback_still_true | length > 0
+
+    tags: ["autogiveback"]
+       
   - name: Get the image into each node's package repo
     block:
     - name: |
@@ -213,74 +277,3 @@
       when: false in new_package_is_default
 
     tags: ["image", "set_node_image"]
-
-  - name: "Disable autogiveback"
-    block: 
-    - name: |
-        Disable auto-giveback on all nodes 
-        (`storage failover modify -auto-giveback false -nodes *`)  
-      netapp.ontap.na_ontap_rest_cli: 
-        command: 'storage/failover'
-        params:   
-          node: "*"
-        body: 
-          auto-giveback: "false"
-        verb: "PATCH"
-      register: update_autogiveback 
-
-    - name: "Log of update_autogiveback"
-      ansible.builtin.debug: 
-        var: update_autogiveback
-
-    - name: |
-        Get auto-giveback status after update command
-        (`storage failover show -fields auto-giveback`)
-      netapp.ontap.na_ontap_rest_cli: 
-        command: 'storage/failover'
-        params: 
-          fields: 'auto-giveback'
-        verb: "GET"
-      register: confirm_autogiveback
-
-    - name: Set confirm_autogiveback var 
-      ansible.builtin.debug: 
-        var: confirm_autogiveback
-
-    - name: Set autogiveback_still_true check 
-      ansible.builtin.set_fact:
-        autogiveback_still_true: "{{ confirm_autogiveback.msg.records | selectattr('auto_giveback', 'equalto', true) | list }}"
-
-    - name: Fail playbook if auto-giveback is not equal to true on all nodes
-      ansible.builtin.fail: 
-        msg: "auto-giveback should be set to false on all nodes and is not. See logs above."
-      when: autogiveback_still_true | length > 0
-
-    tags: ["autogiveback"]
-
-  - name: Kick off autosupports 
-    block: 
-    - name: Get number of nodes (`netapp.ontap.na_ontap_rest_info`)
-      include_tasks: tasks/rest_info.yml
-      vars: 
-        gather_subset: 
-          - cluster/nodes
-    
-    - name: Set maint_hours based on number of nodes
-      ansible.builtin.set_fact:
-        maint_hours: "{{ (1.5 * ontap_rest_info['cluster/nodes']['num_records'] | int) | round | int }}"
-    
-    - name: Build autosupport_message variable
-      ansible.builtin.set_fact:
-        autosupport_message: >
-          MAINT={{ maint_hours }}h Starting Non-Disruptive Upgrade to {{ ontap_package_version }}
-    
-    # https://kb.netapp.com/onprem/ontap/os/How_to_suppress_automatic_case_creation_during_scheduled_maintenance_windows_-_ONTAP_9
-    - name: |
-        Trigger maintenance autosupports
-        (`netapp.ontap.na_ontap_autosupport_invoke` type: all message: '{{ autosupport_message }}')
-      netapp.ontap.na_ontap_autosupport_invoke:
-        autosupport_message: "{{ autosupport_message }}"
-        type: all
-
-    tags: ["autosupport"]
-       
