@@ -384,8 +384,8 @@ flows:
           lifs_to_test: ${lifs_to_test}
           ontap_creds: ${ontap_creds}
         outVars:
-          - lif_ping_test_results
           - lifs_that_failed
+          - lifs_ping_test_results
       out: ping_tests
     - set:
         ping_test_results: ${ping_tests}

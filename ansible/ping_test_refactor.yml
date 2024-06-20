@@ -20,7 +20,7 @@
     test_pause: 10
     lifs_to_ping_test: "{{ lifs_to_test[inventory_hostname] | default([]) }}"
     lifs_that_failed: []
-    lifs_new_ping_test_results: ""
+    lifs_ping_test_results: ""
     lifs_baseline_ping_test_results: "{{ lifs_baseline_ping_test[inventory_hostname] | default([]) }}"
     lifs_diff_ping_test_results: []
   tasks:
