@@ -1,5 +1,5 @@
 ---
-- name: "Run ping tests on array of LIFs"
+- name: "Given a list of LIFs, compare baseline ping test result with a new run of ping tests"
   hosts: "{{ clusters | default('localhost') }}"
   gather_facts: no
   connection: 'local'
@@ -18,14 +18,12 @@
     fail_threshold: 2
     ping_count: 5
     test_pause: 10
-    lifs_to_ping_test: "{{ lifs_to_test[inventory_hostname] }}"
+    lifs_to_ping_test: "{{ lifs_to_test[inventory_hostname] | default([]) }}"
     lifs_that_failed: []
-    lif_ping_test_results: ""
+    lifs_ping_test_results: ""
+    lifs_baseline_ping_test_results: "{{ lifs_baseline_ping_test[inventory_hostname] | default([]) }}"
+    lifs_diff_ping_test_results: []
   tasks:
-  - name: Dump of lifs_to_ping_test
-    ansible.builtin.debug: 
-      var: lifs_to_ping_test
-
   - name: Log of lifs to ping test
     ansible.builtin.debug: 
       msg: | 
@@ -33,7 +31,8 @@
             - {{ lif.ip.address }} ({{ lif.name }})
           {% endfor %}
   
-  - meta: end_host
+  - name: End playbook for host if there are no lifs to run ping tests against
+    meta: end_host
     when: lifs_to_ping_test | length == 0
 
   - name: "{{ '(MOCK RUN, will not actually ping)' if mock == True }} For above referenced LIFs, `ping -c {{ ping_count }} <ip>` {{ test_count }} 
@@ -50,13 +49,83 @@
   - name: Set lifs_that_failed fact
     ansible.builtin.set_fact: 
       lifs_that_failed: "{{ lif_ping_test_results | selectattr('failed_pings', 'ge', fail_threshold) }}"
+      lifs_that_ping: "{{ lif_ping_test_results | selectattr('failed_pings', 'lt', fail_threshold) }}"
+  
+  - name: Set lifs_ping_test_results
+    ansible.builtin.set_fact: 
+      lifs_ping_test_results:
+        failed: 
+          count: "{{ lifs_that_failed | length }}"
+          records: "{{ lifs_that_failed }}"
+        passed: 
+          count: "{{ lifs_that_ping | length }}"
+          records: "{{ lifs_that_ping }}"
+      
+  - name: Set lifs_baseline_ping_test_results if this is the first run
+    ansible.builtin.set_fact: 
+      lifs_baseline_ping_test_results: "{{ lifs_ping_test_results }}"
+    when: lifs_baseline_ping_test_results | length == 0
 
-  - name: Fail playbook if any lif ping tests failed equal to 
-          or more than {{ fail_threshold }} times
-    ansible.builtin.fail: 
+  - name: Baseline test failures vs current test failures
+    ansible.builtin.debug:
+      msg: "baseline = {{ lifs_baseline_ping_test_results.failed.count }} current test = {{ lifs_ping_test_results.failed.count }}"
+
+  - name: If the baseline == latest test run, end run for the host
+    ansible.builtin.meta: end_host 
+    when: lifs_ping_test_results == lifs_baseline_ping_test_results
+
+  - name: Log of lifs_ping_test_results
+    ansible.builtin.debug: 
+      var: lifs_ping_test_results
+
+  - name: Log of lifs_baseline_ping_test_results
+    ansible.builtin.debug: 
+      var: lifs_baseline_ping_test_results
+
+  - name: Log of checksums
+    ansible.builtin.debug: 
       msg: |
-          The following LIFs failed the ping test at least {{ fail_threshold }} times: 
-          {% for lif in lifs_that_failed %}
-            - {{ lif.ip.address }} ({{ lif.name }}) failed {{ lif.failed_pings }} times
+        baseline = {{lifs_baseline_ping_test_results | checksum }}
+
+        current = {{lifs_ping_test_results | checksum }}
+
+  - name: If baseline is different from the latest run, set lifs_test_results_diff 
+    block: 
+    - name: Log of diff
+      ansible.builtin.debug: 
+        msg: |
+          Baseline failed pings ({{ lifs_baseline_ping_test_results.failed.count }}):
+          {% for fail in lifs_baseline_ping_test_results.failed.records %}
+            {{ fail.ip.address }} - {{ fail.name }}
           {% endfor %}
-    when: lifs_that_failed | length > 0
+
+          Latest failed pings ({{ lifs_ping_test_results.failed.count }}):"
+          {% for fail in lifs_ping_test_results.failed.records %}
+            {{ fail.ip.address }} - {{ fail.name }}
+          {% endfor %}
+
+    - name: Set lifs_ping_test_diff
+      ansible.builtin.set_fact:
+        lifs_diff_ping_test_results:
+          failed: 
+            diff_count: "{{ lifs_ping_test_results.failed.count | int - lifs_baseline_ping_test_results.failed.count | int }}"
+            diff_records: "{{ lifs_ping_test_results.failed.records | difference(lifs_baseline_ping_test_results.failed.records) }}"
+
+    - name: Log of lifs_diff_ping_test_results
+      ansible.builtin.debug:
+        var: lifs_diff_ping_test_results
+    #- name: set lifs_test_results_diff
+
+    - name: Show in git diff format
+      ansible.utils.fact_diff:
+        before: "{{ lifs_baseline_ping_test_results.failed }}"
+        after: "{{ lifs_ping_test_results.failed }}"
+      register: lifs_diff_failed_ping_test_results
+
+    - name: Log of lifs_diff_failed_ping_test_results
+      ansible.builtin.debug: 
+        var: lifs_diff_failed_ping_test_results
+
+    when: lifs_ping_test_results != lifs_baseline_ping_test_results
+  # Set diff var
+  
