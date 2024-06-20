@@ -81,13 +81,13 @@ flows:
         lifs_to_test: ${lifs_to_test}
       out: ping_test_results
     - set: 
-        baseline_ping_test_results: ${ping_test_results.lifs_ping_test_results}
-    - log: baseline_ping_test_results = ${baseline_ping_test_results}
+        ping_test_baseline: ${ping_test_results.lifs_ping_test_results}
+    - log: ping_test_baseline = ${ping_test_baseline}
     - call: ping_tests_refactor
       in: 
         ping_test_clusters: ${upgrade_clusters} 
         ping_test_lifs: ${lifs_to_test}
-        ping_test_baseline: ${baseline_ping_test_results}
+        ping_test_baseline: ${ping_test_baseline}
       loop: 
         items: 
           - 1
@@ -382,7 +382,7 @@ flows:
           clusters: ${ontap_clusters} 
           lifs_to_test: ${lifs_to_test}
           ontap_creds: ${ontap_creds}
-          lifs_baseline_ping_test: ${lifs_baseline_ping_test}
+          lifs_baseline_ping_test: ${orDefault('lifs_baseline_ping_test', '')}
         outVars:
           - lifs_that_failed
           - lifs_ping_test_results
