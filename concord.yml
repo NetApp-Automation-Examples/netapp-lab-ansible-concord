@@ -165,10 +165,6 @@ flows:
     - if: ${skip_pre_upgrade == false}
       then:
       - log: "Run the pre-upgrade tasks"
-      - call: ping_tests
-        in: 
-          ping_test_clusters: ${upgrade_clusters} 
-          ping_test_lifs: ${lifs_to_test}
       # TODO: update order of operations to match CHG template
       - task: ansible
         in:
@@ -189,6 +185,7 @@ flows:
       in: 
         nodes_list: ${item}
         lifs_to_test: ${lifs_to_test}
+        ping_test_baseline: ${ping_test_baseline}
       loop: 
         items: ${sequential_nodes_list}
     - log: Run the post-upgrade tasks
@@ -218,6 +215,7 @@ flows:
             in: 
               ping_test_clusters: ${upgrade_clusters}  
               ping_test_lifs: ${lifs_to_test}
+              ping_test_baseline: ${ping_test_baseline}
       - task: ansible
         in:
           dockerImage: ${docker_image}
@@ -273,7 +271,21 @@ flows:
       out: ping_test_results
     - log: ${ping_test_results}
     - log: "Ping tests playbook ran succesfully, review diff with baseline before proceeding"
-    - call: review_ping_tests
+    - call: send_slack
+      in: 
+        slack_emoji: ":pr_normal_review:"
+        slack_text: "ONTAP Upgrade concord process needs ping tests reviewed before it can proceed"
+    - form: review_ping_tests_form
+      saveSubmittedBy: true
+    - log: "Logs/progress reviewed by ${review_ping_tests_form.submittedBy.displayName}"
+    - if: ${review_ping_tests_form.end_process == true or review_ping_tests_form.reviewed == false}
+      then:
+        - log: "Process ended by ${review_ping_tests_form.submittedBy.displayName}: ${review_ping_tests_form}"
+        - call: send_slack
+          in: 
+            slack_text: "ONTAP Upgrade concord process ended after ping test review by ${review_ping_tests_form.submittedBy.displayName}"
+        - exit
+
 
 
   review:
@@ -292,23 +304,7 @@ flows:
             slack_emoji: ":stop:"
             slack_text: "ONTAP Upgrade concord process ended by ${review_form.submittedBy.displayName}"
         - exit
-  
-  review_ping_tests: 
-    - call: send_slack
-      in: 
-        slack_emoji: ":pr_normal_review:"
-        slack_text: "ONTAP Upgrade concord process needs ping tests reviewed before it can proceed"
-    - form: review_ping_tests_form
-      saveSubmittedBy: true
-    - log: "Logs/progress reviewed by ${review_ping_tests_form.submittedBy.displayName}"
-    - if: ${review_ping_tests_form.end_process == true or review_ping_tests_form.reviewed == false}
-      then:
-        - log: "Process ended by ${review_ping_tests_form.submittedBy.displayName}: ${review_ping_tests_form}"
-        - call: send_slack
-          in: 
-            slack_text: "ONTAP Upgrade concord process ended after ping test review by ${review_ping_tests_form.submittedBy.displayName}"
-        - exit
-  
+    
   health_checks_playbook:
     - log: "health_checks_failed value = ${health_checks_failed}"
     - if: ${health_checks_failed == true}
