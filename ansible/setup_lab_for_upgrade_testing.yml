@@ -14,7 +14,10 @@
       validate_certs: "{{ validate_certs }}"
   vars: 
     ntp_servers: 
+      - time.google.com
       - time1.google.com
+      - time2.google.com
+      - time.windows.com
       - time.facebook.com
       - time.apple.com
       - time.cloudflare.com     
