@@ -30,11 +30,11 @@
 
   - name: What is getting passed to lifs_baseline_ping_test_results?
     ansible.builtin.debug: 
-      var: lifs_baseline_ping_test
+      var: lifs_baseline_ping_test[inventory_hostname]
 
   - name: Let's see what is happening with lifs_baseline_ping_test_results
     ansible.builtin.debug:
-      var: lifs_baseline_ping_test[inventory_hostname]
+      var: lifs_baseline_ping_test_results
 
   - name: Log of lifs to ping test
     ansible.builtin.debug: 
