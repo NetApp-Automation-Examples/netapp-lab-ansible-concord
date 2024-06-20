@@ -81,7 +81,7 @@ flows:
         lifs_to_test: ${lifs_to_test}
       out: ping_test_results
     - set: 
-        baseline_ping_test_results: ${ping_test_results.lif_ping_test_results}
+        baseline_ping_test_results: ${ping_test_results.lifs_ping_test_results}
     - log: Baseline ping test results 
     - log: ${baseline_ping_test_results}
     - call: ping_tests_refactor
