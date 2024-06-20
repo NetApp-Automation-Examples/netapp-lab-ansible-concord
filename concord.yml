@@ -82,8 +82,7 @@ flows:
       out: ping_test_results
     - set: 
         baseline_ping_test_results: ${ping_test_results.lifs_ping_test_results}
-    - log: Baseline ping test results 
-    - log: ${baseline_ping_test_results}
+    - log: baseline_ping_test_results = ${baseline_ping_test_results}
     - call: ping_tests_refactor
       in: 
         ping_test_clusters: ${upgrade_clusters} 
@@ -383,6 +382,7 @@ flows:
           clusters: ${ontap_clusters} 
           lifs_to_test: ${lifs_to_test}
           ontap_creds: ${ontap_creds}
+          lifs_baseline_ping_test: ${lifs_baseline_ping_test}
         outVars:
           - lifs_that_failed
           - lifs_ping_test_results
