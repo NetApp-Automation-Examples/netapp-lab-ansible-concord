@@ -186,7 +186,7 @@ flows:
         nodes_list: ${item}
         lifs_to_test: ${lifs_to_test}
         ping_test_baseline: ${ping_test_baseline}
-        target_ontap_version: ${upgrade_image_url}
+        target_ontap_version: ${upgrade_package_version}
       loop: 
         items: ${sequential_nodes_list}
     - log: Run the post-upgrade tasks
@@ -227,9 +227,7 @@ flows:
             nodes: ${nodes_list}
             clusters: ${upgrade_clusters} 
             ontap_creds: ${ontap_creds}
-
-          outVars:
-            - ha_info
+            target_ontap_version: ${target_ontap_version}
         out: node_upgrade_results
         retry:
           times: ${takeover_giveback_retry}

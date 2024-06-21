@@ -15,7 +15,7 @@
     failover_vetoes: []
     failover_vetoes_to_ignore: []
     takeover_option: "normal"
-    target_ontap_version: 9.10.1
+    target_ontap_version: ""
     override_vetoes: "false"
     nodes: []
     node: "{{ nodes[inventory_hostname] if inventory_hostname in nodes else '' }}"
@@ -61,7 +61,7 @@
         
   - name: End playbook for host if node is already at {{ target_ontap_version }}
     ansible.builtin.meta: end_host
-    when: target_ontap_version in node_info.version.full
+    when: target_ontap_version == node_info.version.generation+'.'+node_info.version.major+'.'+node_info.version.minor
 
   - name: Set node_state 
     ansible.builtin.set_fact:
