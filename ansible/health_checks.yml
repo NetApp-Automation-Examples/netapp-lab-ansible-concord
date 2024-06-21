@@ -19,6 +19,7 @@
     allowed_jobs: ["FabricPool Space Job", "SP Certificate Expiry Check Job"]
     cluster_rings: ["vldb","mgmt","vifmgr","bcomd","crs"]
     check_for_not_online: ["storage/aggregates", "storage/volumes", "svm/svms"]
+    post_upgrade_check: False
   tasks:
     - name: Get basic info needed and set variables (`netapp.ontap.na_ontap_rest_info`)
       block: 
@@ -534,7 +535,7 @@
       
       tags: ["networking"]  
 
-    - name: Check what jobs are running 
+    - name: Check what jobs are running (pre-upgrade only)
       block:
       - name: Get running jobs 
         netapp.ontap.na_ontap_rest_cli: 
@@ -568,6 +569,8 @@
               verify_running_jobs.msg.records | map(attribute='name') | difference(allowed_jobs) | length > 0
 
       tags: ["jobs"]
+      when: post_upgrade_check != True
+
 
     - block: 
       - name: Ensure HA is enabled for two node clusters (`netapp.ontap.na_ontap_cluster_ha`)
@@ -577,9 +580,6 @@
 
       - name: Log of enable_ha
         include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["jobs"]
         vars: 
           log: 
             enable_ha: "{{ enable_ha }}"

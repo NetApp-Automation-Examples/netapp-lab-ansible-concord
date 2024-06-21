@@ -209,6 +209,7 @@ flows:
     - call: health_checks 
       in: 
         health_checks_clusters: ${health_checks_form.clusters} 
+        post_upgrade_check: True
     - log: "Completed post-upgrade health checks"
 
 
@@ -251,6 +252,7 @@ flows:
     - call: health_checks_playbook
       in: 
         ontap_clusters: ${health_checks_clusters}
+        post_upgrade_check: ${orDefault('post_upgrade_check', 'False')}
       retry:
         in: 
           health_checks_failed: true
@@ -329,6 +331,7 @@ flows:
         extraVars:
           clusters: ${ontap_clusters} 
           ontap_creds: ${ontap_creds}
+          post_upgrade_check: ${post_upgrade_check}
           #simulate_failure: ${simulate_failure}
         outVars:
           - "summary_logs"
