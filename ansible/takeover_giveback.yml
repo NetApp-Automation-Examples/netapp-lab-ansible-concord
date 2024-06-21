@@ -15,9 +15,12 @@
     failover_vetoes: []
     failover_vetoes_to_ignore: []
     takeover_option: "normal"
-    target_ontap_version: ""
+    target_ontap_version: "9.10.1"
     override_vetoes: "false"
     nodes: []
+    nodes:
+      cluster1: cluster1-01
+      cluster2: cluster2-01
     node: "{{ nodes[inventory_hostname] if inventory_hostname in nodes else '' }}"
     node_query:
       fields: "uptime,state,ha,version"
@@ -53,15 +56,16 @@
   - name: Set node info fact
     ansible.builtin.set_fact:
       node_info: "{{ ontap_rest_info['cluster/nodes']['records'] | first }}"
+  
   - name: Log of {{ target_ontap_version }} vs current ontap version
     ansible.builtin.debug: 
       msg: |
         Current ONTAP Version: {{ node_info.version.full }}
         Target ONTAP Version: NetApp Release {{ target_ontap_version }}
-        
-  - name: End playbook for host if node is already at {{ target_ontap_version }}
+
+  - name: "End playbook for host if node is already at {{ target_ontap_version }}"
     ansible.builtin.meta: end_host
-    when: target_ontap_version == node_info.version.generation+'.'+node_info.version.major+'.'+node_info.version.minor
+    when: target_ontap_version == node_info.version | ontap_version
 
   - name: Set node_state 
     ansible.builtin.set_fact:

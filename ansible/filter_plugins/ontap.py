@@ -208,6 +208,11 @@ def validate_port_group(ports_list, cluster_nodes):
 
     return False
 
+def convert_ontap_version(version_dict):
+    """Given a version dict from ONTAP REST API, return the version in 
+    x.x.x format"""
+    return str(version_dict['generation'])+'.'+str(version_dict['major'])+'.'+str(version_dict['minor'])
+
 
 # Any python file you put in filter_plugins/ with this class structure 
 # will get picked up by your playbooks. You just need to map each 
@@ -225,5 +230,6 @@ class FilterModule(object):
             'ontap_volume_name_increment': calculate_volume_name_with_increment,
             'ontap_find_invalid_failover_groups': return_invalid_failover_groups,
             'ontap_find_invalid_broadcast_domains': return_invalid_broadcast_domains,
-            'ontap_ha_pairs': build_list_of_ha_pairs
+            'ontap_ha_pairs': build_list_of_ha_pairs,
+            'ontap_version': convert_ontap_version,
         }
