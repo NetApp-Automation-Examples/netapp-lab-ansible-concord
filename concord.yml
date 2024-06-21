@@ -189,6 +189,11 @@ flows:
         target_ontap_version: ${upgrade_package_version}
       loop: 
         items: ${sequential_nodes_list}
+    - call: ping_tests
+      in: 
+        ping_test_clusters: ${upgrade_clusters}  
+        ping_test_lifs: ${lifs_to_test}
+        ping_test_baseline: ${ping_test_baseline}
     - log: Run the post-upgrade tasks
     - task: ansible
       in:
@@ -210,6 +215,13 @@ flows:
   upgrade_node: 
     - log: "nodes = ${nodes_list}"
     - try: 
+      - if: ${skip_ping_test == false}
+        then:
+          - call: ping_tests
+            in: 
+              ping_test_clusters: ${upgrade_clusters}  
+              ping_test_lifs: ${lifs_to_test}
+              ping_test_baseline: ${ping_test_baseline}
       - task: ansible
         in:
           dockerImage: ${docker_image}
@@ -222,13 +234,6 @@ flows:
             ontap_creds: ${ontap_creds}
             target_ontap_version: ${target_ontap_version}
         out: node_upgrade_results
-      - if: ${skip_ping_test == false}
-        then:
-          - call: ping_tests
-            in: 
-              ping_test_clusters: ${upgrade_clusters}  
-              ping_test_lifs: ${lifs_to_test}
-              ping_test_baseline: ${ping_test_baseline}
         retry:
           times: ${takeover_giveback_retry}
         error: 
