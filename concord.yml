@@ -186,7 +186,7 @@ flows:
         nodes_list: ${item}
         lifs_to_test: ${lifs_to_test}
         ping_test_baseline: ${ping_test_baseline}
-        target_ontap_version: ${target_ontap_version}
+        target_ontap_version: ${upgrade_image_url}
       loop: 
         items: ${sequential_nodes_list}
     - log: Run the post-upgrade tasks
