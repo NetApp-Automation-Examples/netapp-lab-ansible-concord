@@ -278,7 +278,7 @@ flows:
       out: ping_test_results
     - log: ${ping_test_results}
     - log: "Ping tests playbook ran succesfully"
-    - if: ${hasVariable('ping_test_results.lifs_diff_failed_ping_test_results')} 
+    - if: ${hasVariable('ping_test_results.lifs_diff_ping_test_results')} 
       then: 
         - log: Review diff with baseline pint test before proceeding"
         - call: send_slack
