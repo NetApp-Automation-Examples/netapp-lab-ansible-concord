@@ -8,7 +8,7 @@
   vars:
     # Set this var to stop playbook after getting the failover status of the HA pair
     #failover_check_only: True
-    failover_status_retries: 10
+    failover_status_retries: 20
     failover_status_delay: 30
     # THe official reccomendation during an upgrade is 8 minutes 
     pause_in_seconds_between_takeover_giveback: 480
