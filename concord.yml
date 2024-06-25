@@ -12,6 +12,7 @@ configuration:
     ontap_package_versions: ['9.10.1P15', '9.10.1P16', '9.11.1P1', '9.11.1P2', '9.12.1P13']
     ontap_creds: ${crypto.exportCredentials('Default', 'OntapCreds', null)}
     health_checks_failed: false
+    takeover_giveback_failed: false
     ping_test_failures: false
     health_checks_retry: 5
     skip_ping_test: false
@@ -34,7 +35,10 @@ forms:
   review_ping_tests_form: 
   - reviewed: {label: "Ping test results have been reviewed? Note that process will end if you do not confirm this.", type: "boolean"}
   - end_process: {label: "End proccess now?", type: "boolean"}
-
+  review_takeover_giveback_form:
+  - reviewed: {label: "Taekover/giveback logs have been reviewed? Note that process will end if you do not confirm this.", type: "boolean"}
+  - override_vetoes: {label: "Pass in '-override-vetoes true' to the next run of the takeover/giveback playbook?", type: "boolean"}
+  - end_process: {label: "End proccess now?", type: "boolean"}
   health_checks_form: 
   - clusters:  { label: "Cluster(s)", type: "string+", readonly: false, allow: "${cluster_choices}"}
   - skip_first_health_check: { label: "Skip initial health check?", type: "boolean"}
@@ -95,7 +99,7 @@ flows:
         items: 
           - 1
           - 2
-        
+
   main:  
     - form: health_checks_form
     - if: ${health_checks_form.clusters == ['clab1']}
@@ -231,27 +235,22 @@ flows:
               ping_test_clusters: ${upgrade_clusters}  
               ping_test_lifs: ${lifs_to_test}
               ping_test_baseline: ${ping_test_baseline}
-      - task: ansible
-        in:
-          dockerImage: ${docker_image}
-          configFile: ${ansible_config}
-          inventoryFile: ${ansible_inventory}
-          playbook: ansible/takeover_giveback.yml
-          extraVars:
+      - call: takeover_giveback_playbook
+        in: 
             nodes: ${nodes_list}
             clusters: ${upgrade_clusters} 
             ontap_creds: ${ontap_creds}
             target_ontap_version: ${target_ontap_version}
-        out: node_upgrade_results
         retry:
+          in: 
+            takeover_giveback_failed: true
           times: ${takeover_giveback_retry}
         error: 
           - call: send_slack
             in: 
               slack_text: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
           - log: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
-          - exit
-        
+          - exit        
       - log: "results of takeover_giveback_mock.yml - ${node_upgrade_results.ha_info}"
       error: 
         - throw: "Something happened ${lastError}"
@@ -306,7 +305,49 @@ flows:
       else: 
         - log: No need to review, the latest ping test results matched the baseline ping test results
 
+  takeover_giveback_playbook:
+    - set: 
+        override_vetoes: false
+    - log: "takeover_giveback_failed value = ${takeover_giveback_failed}"
+    - if: ${takeover_giveback_failed == true}
+      then:
+        - call: review_takeover_giveback 
+        - if: {$review_takeover_giveback.override_vetoes == true}
+          then: 
+            - set: 
+                override_vetoes: true
+    - log: override_vetoes = ${override_vetoes}
+    - task: ansible
+      in:
+        dockerImage: ${docker_image}
+        configFile: ${ansible_config}
+        inventoryFile: ${ansible_inventory}
+        playbook: ansible/takeover_giveback.yml
+        extraVars:
+          nodes: ${nodes_list}
+          clusters: ${upgrade_clusters} 
+          ontap_creds: ${ontap_creds}
+          target_ontap_version: ${target_ontap_version}
+          override_vetoes: ${override_vetoes}
+      out: node_upgrade_results
 
+
+  review_takeover_giveback:
+    - call: send_slack
+      in: 
+        slack_emoji: ":pr_normal_review:"
+        slack_text: "Takeover/Giveback has failed during ONTAP Upgrade concord process and needs reviewed"
+    - form: review_takeover_giveback_form
+      saveSubmittedBy: true
+    - log: "Logs/progress reviewed by ${review_form.submittedBy.displayName}"
+    - if: ${review_takeover_giveback_form.end_process == true or review_takeover_giveback_form.reviewed == false}
+      then:
+        - log: "Process ended by ${review_takeover_giveback_form.submittedBy.displayName}: ${review_takeover_giveback_form}"
+        - call: send_slack
+          in: 
+            slack_emoji: ":stop:"
+            slack_text: "ONTAP Upgrade concord process ended after takeover/giveback failure by ${review_takeover_giveback_form.submittedBy.displayName}"
+        - exit
 
   review:
     - call: send_slack

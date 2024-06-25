@@ -12,8 +12,6 @@
     failover_status_delay: 30
     # THe official reccomendation during an upgrade is 8 minutes 
     pause_in_seconds_between_takeover_giveback: 480
-    failover_vetoes: []
-    failover_vetoes_to_ignore: []
     takeover_option: "normal"
     target_ontap_version: "9.10.1"
     override_vetoes: "false"
