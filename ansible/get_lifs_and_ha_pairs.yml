@@ -32,7 +32,7 @@
       version: "!NetApp Release {{ target_ontap_version }}:*"
     ha_pairs_to_upgrade: [] 
   tasks:
-  - name: Fail playbook if no {{ target_ontap_version }} passed
+  - name: Fail playbook if no `target_ontap_version` variable passed
     ansible.builtin.fail: 
       msg: "'target_ontap_version' is undefined, you must pass a valid target package version of ONTAP"
     when: target_ontap_version is undefined 
