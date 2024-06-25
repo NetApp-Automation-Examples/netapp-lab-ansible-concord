@@ -44,7 +44,7 @@ flows:
     - set:
         upgrade_clusters: "clab1"
         upgrade_image_url: "http://dummy.url"
-        upgrade_package_version: "9.10.1P16"
+        upgrade_package_version: "9.10.1P15"
         skip_pre_upgrade: False
         ontap_creds: ${crypto.exportCredentials('Default', 'OntapCredsClab', null)}
     - log: "Get LIFs for ping test and HA Pairs that haven't been upgraded yet"
