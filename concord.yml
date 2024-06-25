@@ -157,18 +157,10 @@ flows:
       error:
       - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
-
-    - log: "Run baseline ping test"
-    - call: ping_test_playbook
-      in:
-        mock: ${mock}
-        ontap_clusters: ${upgrade_clusters}
-        lifs_to_test: ${lifs_to_test}
-      out: ping_test_results
-    - set: 
-        ping_test_baseline: ${ping_test_results.lifs_ping_test_results}
-    - log: ping_test_baseline = ${ping_test_baseline}
-
+    - if: ${sequential_nodes_list == []}
+      then: 
+        - log: "There are no nodes to upgrade, ending process."
+        - exit
     - if: ${skip_pre_upgrade == false}
       then:
       - log: "Run the pre-upgrade tasks"
@@ -187,6 +179,18 @@ flows:
         out: pre_upgrade
       else: 
       - log: "Skipping pre-upgrade steps per form selection."
+
+    - log: "Run baseline ping test"
+    - call: ping_test_playbook
+      in:
+        mock: ${mock}
+        ontap_clusters: ${upgrade_clusters}
+        lifs_to_test: ${lifs_to_test}
+      out: ping_test_results
+    - set: 
+        ping_test_baseline: ${ping_test_results.lifs_ping_test_results}
+    - log: ping_test_baseline = ${ping_test_baseline}
+
     - log: Run the takeover_giveback on each ha pair sequentially 
     - call: upgrade_node
       in: 
