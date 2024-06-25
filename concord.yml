@@ -312,7 +312,7 @@ flows:
     - if: ${takeover_giveback_failed == true}
       then:
         - call: review_takeover_giveback 
-        - if: {$review_takeover_giveback.override_vetoes == true}
+        - if: ${review_takeover_giveback.override_vetoes == true}
           then: 
             - set: 
                 override_vetoes: true
