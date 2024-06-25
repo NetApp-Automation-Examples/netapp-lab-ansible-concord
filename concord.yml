@@ -42,10 +42,11 @@ forms:
 flows:
   dev: 
     - set:
-        upgrade_clusters: "lab_ontap"
+        upgrade_clusters: "clab1"
         upgrade_image_url: "http://dummy.url"
-        upgrade_package_version: "9.10.1P15"
+        upgrade_package_version: "9.10.1P16"
         skip_pre_upgrade: False
+        ontap_creds: ${crypto.exportCredentials('Default', 'OntapCredsClab', null)}
     - log: "Get LIFs for ping test and HA Pairs that haven't been upgraded yet"
     - task: ansible
       in:
@@ -73,25 +74,31 @@ flows:
       error:
       - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
-    - log: "Run baseline ping test"
-    - call: ping_test_playbook
-      in:
-        mock: ${mock}
-        ontap_clusters: ${upgrade_clusters}
-        lifs_to_test: ${lifs_to_test}
-      out: ping_test_results
-    - set: 
-        ping_test_baseline: ${ping_test_results.lifs_ping_test_results}
-    - log: ping_test_baseline = ${ping_test_baseline}
-    - call: ping_tests
-      in: 
-        ping_test_clusters: ${upgrade_clusters} 
-        ping_test_lifs: ${lifs_to_test}
-        ping_test_baseline: ${ping_test_baseline}
-      loop: 
-        items: 
-          - 1
-          - 2
+    - if: ${sequential_nodes_list == []}
+      then: 
+      - log: "Empty, should stop flow here"
+      else: 
+      - log: "Not empty, should proceed with upgrade"
+
+    # - log: "Run baseline ping test"
+    # - call: ping_test_playbook
+    #   in:
+    #     mock: ${mock}
+    #     ontap_clusters: ${upgrade_clusters}
+    #     lifs_to_test: ${lifs_to_test}
+    #   out: ping_test_results
+    # - set: 
+    #     ping_test_baseline: ${ping_test_results.lifs_ping_test_results}
+    # - log: ping_test_baseline = ${ping_test_baseline}
+    # - call: ping_tests
+    #   in: 
+    #     ping_test_clusters: ${upgrade_clusters} 
+    #     ping_test_lifs: ${lifs_to_test}
+    #     ping_test_baseline: ${ping_test_baseline}
+    #   loop: 
+    #     items: 
+    #       - 1
+    #       - 2
         
   main:  
     - form: health_checks_form
