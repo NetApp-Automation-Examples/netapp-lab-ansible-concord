@@ -16,6 +16,7 @@ configuration:
     health_checks_retry: 5
     skip_ping_test: false
     ping_tests_retry: 5
+    pre_upgrade_retry: 5
     takeover_giveback_retry: 5
     #Set to true for mock ping tests 
     mock: false
@@ -159,7 +160,6 @@ flows:
     - if: ${skip_pre_upgrade == false}
       then:
       - log: "Run the pre-upgrade tasks"
-      # TODO: update order of operations to match CHG template
       - task: ansible
         in:
           dockerImage: ${docker_image}
@@ -172,6 +172,8 @@ flows:
             ontap_package_version: ${upgrade_package_version}
             ontap_package_url: ${upgrade_image_url}
         out: pre_upgrade
+        retry:
+          times: ${pre_upgrade_retry}
       else: 
       - log: "Skipping pre-upgrade steps per form selection."
 
