@@ -251,7 +251,6 @@ flows:
               slack_text: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
           - log: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
           - exit        
-      - log: "results of takeover_giveback_mock.yml - ${node_upgrade_results.ha_info}"
       error: 
         - throw: "Something happened ${lastError}"
 
@@ -340,6 +339,7 @@ flows:
     - form: review_takeover_giveback_form
       saveSubmittedBy: true
     - log: "Logs/progress reviewed by ${review_takeover_giveback_form.submittedBy.displayName}"
+    - log: "Test 1"
     - if: ${review_takeover_giveback_form.end_process == true or review_takeover_giveback_form.reviewed == false}
       then:
         - log: "Process ended by ${review_takeover_giveback_form.submittedBy.displayName}: ${review_takeover_giveback_form}"
@@ -348,6 +348,7 @@ flows:
             slack_emoji: ":stop:"
             slack_text: "ONTAP Upgrade concord process ended after takeover/giveback failure by ${review_takeover_giveback_form.submittedBy.displayName}"
         - exit
+    - log: "Test 2"
 
   review:
     - call: send_slack
