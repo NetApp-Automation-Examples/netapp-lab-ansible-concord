@@ -341,7 +341,7 @@ flows:
       saveSubmittedBy: true
     - log: "Logs/progress reviewed by ${review_takeover_giveback_form.submittedBy.displayName}"
     - if: ${review_takeover_giveback_form.end_process == true or review_takeover_giveback_form.reviewed == false}
-      then:1
+      then:
         - log: "Process ended by ${review_takeover_giveback_form.submittedBy.displayName}: ${review_takeover_giveback_form}"
         - call: send_slack
           in: 
