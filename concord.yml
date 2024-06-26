@@ -36,7 +36,7 @@ forms:
   - reviewed: {label: "Ping test results have been reviewed? Note that process will end if you do not confirm this.", type: "boolean"}
   - end_process: {label: "End proccess now?", type: "boolean"}
   review_takeover_giveback_form:
-  - reviewed: {label: "Taekover/giveback logs have been reviewed? Note that process will end if you do not confirm this.", type: "boolean"}
+  - reviewed: {label: "Takeover/giveback logs have been reviewed? Note that process will end if you do not confirm this.", type: "boolean"}
   - override_vetoes: {label: "Pass in '-override-vetoes true' to the next run of the takeover/giveback playbook?", type: "boolean"}
   - end_process: {label: "End proccess now?", type: "boolean"}
   health_checks_form: 
@@ -311,7 +311,7 @@ flows:
     - if: ${takeover_giveback_failed == true}
       then:
         - call: review_takeover_giveback 
-        - if: ${review_takeover_giveback.override_vetoes == true}
+        - if: ${review_takeover_giveback_form.override_vetoes == true}
           then: 
             - set: 
                 override_vetoes: true
