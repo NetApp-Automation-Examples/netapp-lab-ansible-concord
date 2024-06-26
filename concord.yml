@@ -339,9 +339,9 @@ flows:
         slack_text: "Takeover/Giveback has failed during ONTAP Upgrade concord process and needs reviewed"
     - form: review_takeover_giveback_form
       saveSubmittedBy: true
-    - log: "Logs/progress reviewed by ${review_form.submittedBy.displayName}"
+    - log: "Logs/progress reviewed by ${review_takeover_giveback_form.submittedBy.displayName}"
     - if: ${review_takeover_giveback_form.end_process == true or review_takeover_giveback_form.reviewed == false}
-      then:
+      then:1
         - log: "Process ended by ${review_takeover_giveback_form.submittedBy.displayName}: ${review_takeover_giveback_form}"
         - call: send_slack
           in: 
