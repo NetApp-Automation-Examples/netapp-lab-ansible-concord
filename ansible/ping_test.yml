@@ -22,7 +22,6 @@
     lifs_that_failed: []
     lifs_ping_test_results: ""
     lifs_baseline_ping_test_results: "{{ lifs_baseline_ping_test[inventory_hostname] | default([]) }}"
-    lifs_diff_ping_test_results: False
   tasks:
   - name: Log of lifs to ping test
     ansible.builtin.debug: 
