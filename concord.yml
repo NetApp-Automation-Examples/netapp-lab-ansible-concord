@@ -120,7 +120,7 @@ flows:
           label: "Cluster(s) that passed health checks", type: "string+", readonly: false, 
           allow: "${health_checks_form.clusters}", value: "${health_checks_form.clusters}"
         }
-      - image_url: { label: "ONTAP Image URL", type: "string" }
+      - image_url: { label: "ONTAP Image URL", type: "string?" }
       - package_version: { label: "Target ONTAP Package version, i.e. 9.10.1P15",  type: "string", allow: "${ontap_package_versions}"}
       - skip_pre_upgrade_steps: { label: "Skip pre-upgrade steps? (image upload, autosupport, etc)", type: "boolean"}
 
