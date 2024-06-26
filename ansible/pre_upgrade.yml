@@ -43,13 +43,14 @@
         msg: "{{ ontap_package_version }} - {{ ontap_package_url }}"
       run_once: true
 
-    - name: Ping download URL
+    - name: Ping download URL 
       uri: 
         url: "{{ ontap_package_url }}"
         method: HEAD
         return_content: no
       register: ontap_package_url_head
       run_once: true
+      when: ontap_package_url != ''
 
     - name: Fail playbook if ontap package can't be reached 
       ansible.builtin.fail: 
