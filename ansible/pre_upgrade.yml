@@ -57,7 +57,7 @@
       when: ontap_package_url_head.status != 200
       run_once: true
     
-    when: ontap_package_url | length > 0
+    when: ontap_package_url 
     tags: ["image", "upload_check"]
 
   - name: Kick off autosupports 
