@@ -4,6 +4,7 @@ configuration:
   dependencies:
     - "mvn://com.walmartlabs.concord.plugins.basic:concord-tasks:2.9.0"
     - "mvn://com.walmartlabs.concord.plugins.basic:ansible-tasks:2.9.0"
+
   arguments: 
     docker_image: jwarlicknetapp.azurecr.io/concord-ansible-netapp
     ansible_config: ansible/ansible-concord.cfg
@@ -47,58 +48,23 @@ forms:
 flows:
   dev: 
     - set:
-        upgrade_clusters: "clab1"
+        upgrade_clusters: "cluster1"
         upgrade_image_url: "http://dummy.url"
-        upgrade_package_version: "9.10.1P16"
-        skip_pre_upgrade: False
         ontap_creds: ${crypto.exportCredentials('Default', 'OntapCredsClab', null)}
-    - log: "Get LIFs for ping test and HA Pairs that haven't been upgraded yet"
     - task: ansible
       in:
         dockerImage: ${docker_image}
         configFile: ${ansible_config}
         inventoryFile: ${ansible_inventory}
-        playbook: ansible/get_lifs_and_ha_pairs.yml
+        playbook: ansible/health_checks.yml
         extraVars:
           clusters: ${upgrade_clusters} 
           ontap_creds: ${ontap_creds}
-          target_ontap_version: ${upgrade_package_version}
         outVars:
-          - lifs_to_test
-          - ha_pairs_to_upgrade
-      out: get_lifs_and_ha_pairs
-    - log: ${get_lifs_and_ha_pairs}
-    - set: 
-        lifs_to_test: ${get_lifs_and_ha_pairs.lifs_to_test}
-        ha_pairs_to_upgrade: ${get_lifs_and_ha_pairs.ha_pairs_to_upgrade}
-        # for the time being don't mess with the "js" file 
-        ha_pairs: ${get_lifs_and_ha_pairs.ha_pairs_to_upgrade}
-    - log: "lifs_to_test = ${lifs_to_test}"
-    - log: "ha_pairs_to_upgrade = ${ha_pairs_to_upgrade}"
-    - script: scripts/sequential_nodes_list.js
-      error:
-      - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
-    - log: "sequential_nodes_list: ${sequential_nodes_list}"
-    - log: "Run baseline ping test"
-    - call: ping_test_playbook
-      in:
-        mock: ${mock}
-        ontap_clusters: ${upgrade_clusters}
-        lifs_to_test: ${lifs_to_test}
-      out: ping_test_results
-    - set: 
-        ping_test_baseline: ${ping_test_results.lifs_ping_test_results}
-    - log: ping_test_baseline = ${ping_test_baseline}
-    - call: review
-    - call: ping_tests
-      in: 
-        ping_test_clusters: ${upgrade_clusters} 
-        ping_test_lifs: ${lifs_to_test}
-        ping_test_baseline: ${ping_test_baseline}
-      loop: 
-        items: 
-          - 1
-          - 2
+          - summary_logs
+      out: test_logs
+    - log: ${test_logs}
+    - log: ${resource.writeAsYaml(test_logs)} 
 
   main:  
     - form: health_checks_form
