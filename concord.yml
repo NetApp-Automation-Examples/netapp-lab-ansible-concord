@@ -50,7 +50,6 @@ flows:
     - set:
         upgrade_clusters: "cluster1"
         upgrade_image_url: "http://dummy.url"
-        ontap_creds: ${crypto.exportCredentials('Default', 'OntapCredsClab', null)}
     - task: ansible
       in:
         dockerImage: ${docker_image}
