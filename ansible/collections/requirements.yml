@@ -3,3 +3,4 @@ collections:
   - name: netapp.ontap
   - name: ansible.windows
   - name: community.general
+  - name: community.docker

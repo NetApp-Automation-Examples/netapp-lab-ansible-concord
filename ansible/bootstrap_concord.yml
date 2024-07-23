@@ -25,6 +25,8 @@
       name: OntapCreds
       username: "{{ ontap_username }}"
       password: "{{ ontap_password }}"
+    docker_user: "{{ lookup('env', 'DOCKER_USER') }}" 
+    docker_password: "{{ lookup('env', 'DOCKER_PASSWORD') }}"
     github_owner: NetApp-Automation-Examples
     github_repo: netapp-lab-ansible-concord
     github_repo_url: git@github.com:NetApp-Automation-Examples/netapp-lab-ansible-concord.git
@@ -68,14 +70,20 @@
       ansible.builtin.command: colima start 
       when: ansible_distribution == 'MacOSX'
 
+    - name: Log into DockerHub to avoid rate limit
+      community.docker.docker_login:
+        username: "{{ docker_user }}"
+        password: "{{ docker_password }}"
+
     - name: Run docker-compose up 
-      community.docker.docker_compose:
+      community.docker.docker_compose_v2:
         project_src: "{{ concord_compose_folder }}"
       register: docker_compose_up
 
     - name: Log
       ansible.builtin.debug: 
         var: docker_compose_up    
+    
     tags: deploy
   
   - name: Configure Concord 
@@ -91,6 +99,8 @@
           method: GET
           return_content: true
         register: get_deploy_key
+        retries: 5
+        delay: 10
         
       - name: Log get_deploy_key
         ansible.builtin.debug: 
