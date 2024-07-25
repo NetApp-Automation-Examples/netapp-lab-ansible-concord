@@ -34,7 +34,13 @@ def print_list_of_dicts_as_table(list_of_dicts, keys=None):
         print(fmtstring.format(*first_entry.keys()))
         print(fmtstring.format(*['-'*key_len for key_len in max_key_lens]))
         for entry in list_of_dicts:
-            print(fmtstring.format(*entry.values()))
+            # handle lists
+            row = []
+            for cell in entry.values():
+                if isinstance(cell, list):
+                    cell = ','.join(cell)
+                row.append(cell)
+            print(fmtstring.format(*row))
 
     return stream.getvalue()
 
