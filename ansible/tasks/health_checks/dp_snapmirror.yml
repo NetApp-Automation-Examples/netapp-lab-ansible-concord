@@ -10,4 +10,5 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      snapmirror_dp: "{{ verify_snapmirror_dp_destinations }}"
+      DP Snapmirrors: "{{ verify_snapmirror_dp_destinations.msg.records | dicts_to_table }}"
+  when: verify_snapmirror_dp_destinations.msg.num_records > 0

@@ -4,17 +4,21 @@
     params: 
       fields: "node,partner-name,enabled,possible,state-description"
     verb: "GET"
-  register: verify_failover_status
+  register: get_failover_status
+
+- name: Set failover_status 
+  ansible.builtin.set_fact:
+    failover_status: "{{ get_failover_status.msg.records }}"
 
 - name: Log of verify_failover_status
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      failover_status: "{{ verify_failover_status }}"
+      Failover Status: "{{ failover_status | dicts_to_table }}"
 
 - name: Check for any nodes where failover isn't possible
   ansible.builtin.set_fact: 
-    failover_not_possible: "{{ verify_failover_status.msg.records | selectattr('possible','false') | list }}"
+    failover_not_possible: "{{ failover_status | selectattr('possible','false') | list }}"
 
 - name: Enable failover for any nodes where it's disabled on 4+ node clusters (later, we will ensure two node clusters are in HA mode, which automatically turns on storage failover)  
   block: 
@@ -23,7 +27,7 @@
     include_tasks: tasks/add_log.yml
     vars: 
       log: 
-        failover_not_possible: "{{ failover_not_possible }}"
+        Failover Not Possible: "{{ failover_not_possible }}"
 
   - name: Enable storage failover (`netapp.ontap.na_ontap_storage_failover`)
     netapp.ontap.na_ontap_storage_failover:

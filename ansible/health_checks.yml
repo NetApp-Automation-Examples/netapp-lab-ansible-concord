@@ -56,10 +56,8 @@
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
-            cluster_nodes: "{{ cluster_nodes | map(attribute='name') }}"
-            cluster_node_count: "{{ cluster_node_count | int }}"
-            san_igroups_count: "{{ san_igroups_count | int }}"
-            san_igroups: "{{ san_igroups | map(attribute='name') }}"
+            Cluster Nodes: "{{ cluster_nodes | map(attribute='name') }}"
+            SAN igroups: "{{ san_igroups | map(attribute='name') }}"
 
       tags: ["always"]
 
@@ -88,7 +86,7 @@
 
       tags: ["cluster_rings"]
     
-    - name: Make sure cluster epsilon is at first node 
+    - name: Make sure cluster epsilon is at last node 
       block: 
 
       - name: For larger clusters, find epsilon (`cluster show -fields epsilon`)
@@ -103,14 +101,14 @@
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
-            cluster_epsilon: "{{ cluster_epsilon }}"
+            cluster_epsilon: "{{ cluster_epsilon.msg.records | dicts_to_table }}"
 
       - name: Set first_node and epsilon_node facts 
         ansible.builtin.set_fact:
-          first_node: "{{ cluster_epsilon.msg.records | first }}"
+          last_node: "{{ cluster_epsilon.msg.records | last }}"
           epsilon_node: "{{ cluster_epsilon.msg.records |selectattr('epsilon','true') | first | default(omit) }}"
 
-      - name: Set epsilon to false, if not on first node (`cluster modify -node <epsilonnode> -epsilon false`)     
+      - name: Set epsilon to false, if not on last node (`cluster modify -node <epsilonnode> -epsilon false`)     
         netapp.ontap.na_ontap_rest_cli: 
           command: 'cluster'
           body: 
@@ -119,28 +117,29 @@
             node: "{{ epsilon_node.node }}"  
           verb: "PATCH"
         register: move_cluster_epsilon
-        # Catch edge case where epsilon is not true for any node
-        when: first_node.epsilon == false and epsilon_node is defined 
 
-      - name: Set epsilon to true on first node (`cluster modify -node <firstnode> -epsilon true`)     
+        # Catch edge case where epsilon is not true for any node
+        when: last_node.epsilon == false and epsilon_node is defined 
+
+      - name: Set epsilon to true on last node (`cluster modify -node <lastnode> -epsilon true`)     
         netapp.ontap.na_ontap_rest_cli: 
           command: 'cluster'
           body: 
             epsilon: true 
           params: 
-            node: "{{ first_node.node }}"
+            node: "{{ last_node.node }}"
           verb: "PATCH"
         register: move_cluster_epsilon
-        when: first_node.epsilon == false
+        when: last_node.epsilon == false
 
       - name: Log of move_cluster_epsilon
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
             cluster_epsilon_move: "{{ move_cluster_epsilon }}"
-        when: first_node.epsilon == false
+        when: last_node.epsilon == false
 
-      - name: Confirm epsilon is at first node (`cluster show -fields epsilon`)
+      - name: Confirm epsilon is at last node (`cluster show -fields epsilon`)
         netapp.ontap.na_ontap_rest_cli: 
           command: 'cluster'
           params: 
@@ -152,14 +151,14 @@
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
-            cluster_epsilon_confirm: "{{ cluster_epsilon_confirm }}"
+            Confirm Cluster Epsilon: "{{ cluster_epsilon_confirm.msg.records | dicts_to_table }}"
 
-      - name: Fail playbook if epsilon is not at first node
+      - name: Fail playbook if epsilon is not at last node
         include_tasks: tasks/add_failure.yml
         vars:
           failure: 
-            issue: "{{ first_node.node }} should be epsilon, but currently {{ epsilon_node.node | default('no node') }} is set as epsilon"
-            details: "{{ cluster_epsilon_confirm }}"
+            issue: "{{ last_node.node }} should be epsilon, but currently {{ epsilon_node.node | default('no node') }} is set as epsilon"
+            details: "{{ cluster_epsilon_confirm | dicts_to_table }}"
         when: cluster_epsilon_confirm.msg.records.0.epsilon == false
       
       when: cluster_node_count | int > 2
@@ -176,8 +175,8 @@
           warning: 
             issue: "Verify SAN configuration. Validate server side is set for redundancy."
             details: 
-              iscsi: "{{ verify_iscsi.msg.records }}"
-              fcp: "{{ verify_fcp.msg.records }}"
+              iscsi: "{{ verify_iscsi.msg.records | dicts_to_table }}"
+              fcp: "{{ verify_fcp.msg.records | dicts_to_table }}"
       
       when: san_igroups_count | int > 0
       tags: ["san"] 
@@ -194,7 +193,7 @@
             issue: "**Destination cluster must be upgraded prior 
                     to upgrading source cluster for DP SnampMirrors** 
                     See https://docs.netapp.com/us-en/ontap/upgrade/task_preparing_snapmirror_relationships_for_a_nondisruptive_upgrade_or_downgrade.html"
-            details: "{{ verify_snapmirror_dp_destinations }}"
+            details: "{{ verify_snapmirror_dp_destinations.msg.records | dicts_to_table }}"
         when: verify_snapmirror_dp_destinations.msg.num_records > 0
 
       tags: ["dp_snapmirror"]
@@ -209,10 +208,10 @@
         vars: 
           failure: 
             issue: "Each node must not exceed 20,000 snapshot copies"
-            details: "{{ verify_snapshot_count.msg.num_records }}"
+            details: "{{ verify_snapshot_count.msg.num_records }} snapshot copies"
         when: verify_snapshot_count.msg.num_records > 20000
 
-      tags: ["snapshots"]
+      tags: ["snapshot_count"]
 
     - name: Check for bad disks
       block:
@@ -236,7 +235,7 @@
         vars: 
           failure: 
             issue: "There cannot be any inconsistent volumes"
-            records: "{{ check_for_inconsistent_volumes.msg.records }}"
+            records: "{{ check_for_inconsistent_volumes.msg.records | dicts_to_table }}"
         when: check_for_inconsistent_volumes.msg.num_records > 0
         
       tags: ["inconsistent_volumes"]
@@ -262,12 +261,13 @@
             tags: ["dedupe_volumes"]
         vars: 
           log: 
-            large_dedupe_volumes: "{{ verify_large_dedupe_volumes }}"
+            Large Deduped Volumes: "{{ verify_large_dedupe_volumes.msg.records | dicts_to_table }}"
           
       - block: 
         - name: If verify_large_dedupe_volumes isn't empty, gather list of aggrs involved 
           ansible.builtin.set_fact: 
-            large_dedupe_volumes_aggrs: "{{ verify_large_dedupe_volumes.msg.records | map('aggregate') | list }}"
+            large_dedupe_volumes_aggrs: "{{ verify_large_dedupe_volumes.msg.records 
+                                            | map('aggregate') | list }}"
           
         - name: Log of large_dedupe_volumes_aggrs
           include_tasks: tasks/add_log.yml
@@ -276,7 +276,7 @@
               tags: ["dedupe_volumes"]
           vars: 
             log: 
-              large_dedupe_volumes_aggrs: "{{ large_dedupe_volumes_aggrs }}"
+              Large Dedupe Volumes Aggr List: "{{ large_dedupe_volumes_aggrs }}"
 
         - name: Check aggr containing deduplicated volumes (`df -A <aggr>,<aggr2>`)
           netapp.ontap.na_ontap_ssh_command:
@@ -292,7 +292,7 @@
               tags: ["dedupe_volumes"]
           vars: 
             log: 
-              verify_large_dedupe_volumes_aggrs: "{{ verify_large_dedupe_volumes_aggrs }}"
+              Verify Large Dedupe Volume Aggrs: "{{ verify_large_dedupe_volumes_aggrs }}"
 
         - name: Fail playbook if any aggregates containing dedupe volumes are over 97% 
           include_tasks: tasks/add_failure.yml
@@ -343,7 +343,7 @@
         vars: 
           failure: 
             issue: "All cluster DNS nameservers must be up"
-            records: "{{ verify_dns_status }}"
+            records: "{{ verify_dns_status.msg.records | dicts_to_table }}"
         when: verify_dns_status.msg.num_records > 0
 
       - name: Check to make sure status-oper and status-admin are up 
@@ -607,13 +607,15 @@
 
       - name: Set uptime_and_os
         ansible.builtin.set_fact: 
-          uptime_and_os: "{{ verify_ontap_version.msg.records | community.general.lists_mergeby(verify_uptime.msg.records, 'node') }}"
+          uptime_and_os: "{{ verify_ontap_version.msg.records 
+                            | community.general.lists_mergeby(verify_uptime.msg.records, 'node') |
+                            dicts_to_table }}"
 
       - name: Show uptime and current ONTAP Version
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
-            uptime_and_os: "{{ uptime_and_os }}"
+            Uptime and OS Info: "{{ uptime_and_os }}"
       
       - name: Show summary_logs
         ansible.builtin.debug: 

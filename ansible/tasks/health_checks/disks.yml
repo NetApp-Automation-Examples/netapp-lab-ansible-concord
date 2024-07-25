@@ -14,7 +14,8 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      broken_disks: "{{ broken_disks }}"
+      Broken/Maintenance Disks: "{{ broken_disks | dicts_to_table }}"
+
 
 - name: Get pending/reconstructing disks 
         (netapp.ontap.na_ontap_rest_info, storage/disks, state=pending|reconstruction)
@@ -32,7 +33,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      pending_disks: "{{ pending_disks }}"
+      Pending / Reconstructing Disks: "{{ pending_disks | dicts_to_table }}"
 
 - name: Fail playbook if any non-healthy disks
   include_tasks: tasks/add_failure.yml
@@ -40,6 +41,6 @@
     failure: 
       issue: "There are broken disks and/or disks in a pending / reconstructing state."
       details: 
-        broken_disks: "{{ broken_disks }}"
-        pending_disks: "{{ pending_disks }}"
+        broken_disks: "{{ broken_disks | dicts_to_table }}"
+        pending_disks: "{{ pending_disks | dicts_to_table }}"
   when: broken_disks | length > 0 or pending_disks | length > 0 

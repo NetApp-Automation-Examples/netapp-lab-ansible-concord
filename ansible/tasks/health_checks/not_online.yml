@@ -7,14 +7,12 @@
     parameters:
       state: "!{{ 'running' if online_object_check == 'svm/svms' else 'online' }}"
       fields: "uuid,name,state"
-- name: Hey
-  ansible.builtin.debug:
-    var: ontap_rest_info[online_object_check]
-    
+
 - name: "Fail playbook for any offline {{ online_object_check }}"
   include_tasks: tasks/add_failure.yml
   vars: 
     failure: 
       issue: "All {{ online_object_check }} must be {{ 'running' if online_object_check == 'svm/svms' else 'online' }}" 
-      records: "{{ ontap_rest_info[online_object_check]['records'] }}"
+      records: "{{ ontap_rest_info[online_object_check]['records'] 
+                  | ansible.utils.remove_keys(target=['_links']) | dicts_to_table }}"
   when: ontap_rest_info[online_object_check] is defined and ontap_rest_info[online_object_check]['num_records'] | int > 0

@@ -8,4 +8,4 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      snapshot_count: "{{ verify_snapshot_count.msg.num_records }}"
+      Snapshot Count: "{{ verify_snapshot_count.msg.num_records }}"

@@ -14,7 +14,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      "verify_cluster_rings": "{{ item.msg.records }}"
+      Verify Cluster Rings: "{{ item.msg.records | dicts_to_table }}"
   loop: "{{ verify_cluster_rings.results }}"
   loop_control:
     label: "{{ item.item }}"
@@ -28,7 +28,7 @@
   vars: 
     failure: 
       issue: "The database epochs and/or quorum master do not match for each node for {{ item.item }}" 
-      details: "{{ item.msg.records }}"
+      details: "{{ item.msg.records | dicts_to_table }}"
   loop: "{{ verify_cluster_rings.results }}"
   loop_control: 
     label: "{{ item.item }}"

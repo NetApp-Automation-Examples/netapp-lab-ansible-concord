@@ -4,20 +4,25 @@
     params: 
       fields: "health,eligibility"
     verb: "GET"
-  register: verify_cluster_health
+  register: get_cluster_health
 
-- name: Log of verify_cluster_health
+- name: Set cluster_health
+  ansible.builtin.set_fact: 
+    cluster_health: "{{ get_cluster_health.msg.records }}"
+    cluster_health_log: "{{ get_cluster_health.msg.records | dicts_to_table }}"
+
+- name: Log of cluster_health
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      cluster_health: "{{ verify_cluster_health }}"
+      Cluster Health: "{{ cluster_health_log }}"
 
 - name: Add failure if eligibility or health is not true 
   include_tasks: tasks/add_failure.yml
   vars: 
     failure: 
       issue: "Health and Eligibility must be `true` for all nodes"
-      details: "{{ verify_cluster_health.msg.records }}"
-  when: verify_cluster_health.msg.records | selectattr('eligibility','eq','false') | 
+      details: "{{ cluster_health_log }}"
+  when: cluster_health | selectattr('eligibility','eq','false') | 
         selectattr('health','eq', 'false') | list | length > 0
 

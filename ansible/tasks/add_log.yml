@@ -1,6 +1,6 @@
-- name: Display log message  
-  ansible.builtin.debug:
-    var: log 
+# - name: Display log message  
+#   ansible.builtin.debug:
+#     var: log 
 
 - name: Add log message to logs list 
   ansible.builtin.set_fact: 
