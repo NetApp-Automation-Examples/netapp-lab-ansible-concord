@@ -3,16 +3,20 @@ import sys
 from io import StringIO
 from unittest.mock import patch
 
+# capture stdout just for this function 
 stream = StringIO()
 
 # TODO try to figure out table solution for things like the broadcast 
-# domains dicts, which have some values as lists instead of strings. It
-# does not look play nice with print_list_of_dicts_as_table  
+# domains dicts, which have some values as lists instead of a short strings. It
+# does not play nice with print_list_of_dicts_as_table  
 
-# credit: https://stackoverflow.com/a/67198100
 def print_list_of_dicts_as_table(list_of_dicts, keys=None):
+    if not list_of_dicts: 
+        return list_of_dicts
+
     with patch('sys.stdout', stream):
 
+        # credit: https://stackoverflow.com/a/67198100
         # assuming all dicts have same keys
         first_entry = list_of_dicts[0]
         if keys is None:
@@ -30,7 +34,7 @@ def print_list_of_dicts_as_table(list_of_dicts, keys=None):
         print(fmtstring.format(*first_entry.keys()))
         print(fmtstring.format(*['-'*key_len for key_len in max_key_lens]))
         for entry in list_of_dicts:
-            print(fmtstring.format(*adfasdf.values()))
+            print(fmtstring.format(*entry.values()))
 
     return stream.getvalue()
 

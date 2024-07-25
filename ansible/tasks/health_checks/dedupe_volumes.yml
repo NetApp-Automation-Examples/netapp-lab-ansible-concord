@@ -1,0 +1,51 @@
+- name: List any deduplicated volumes over 96% 
+        (`volume show -is-sis-volume true -percent-used >96 -fields aggregate,percent-used`)
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'volume'
+    params: 
+      is-sis-volume: "true"
+      percent-used: ">96"
+      fields: "aggregate,percent-used"
+    verb: "GET"
+  register: verify_large_dedupe_volumes
+
+- name: Log of verify_large_dedupe_volumes
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      Deduped Volumes Over 96%: "{{ verify_large_dedupe_volumes.msg.records | dicts_to_table }}"
+    
+- block: 
+  - name: If verify_large_dedupe_volumes isn't empty, gather list of aggrs involved 
+    ansible.builtin.set_fact: 
+      large_dedupe_volumes_aggrs: "{{ verify_large_dedupe_volumes.msg.records 
+                                      | map('aggregate') | list }}"
+    
+  - name: Log of large_dedupe_volumes_aggrs
+    include_tasks: tasks/add_log.yml
+    vars: 
+      log: 
+        Large Dedupe Volumes Aggr List: "{{ large_dedupe_volumes_aggrs }}"
+
+  - name: Check aggr containing deduplicated volumes (`df -A <aggr>,<aggr2>`)
+    netapp.ontap.na_ontap_ssh_command:
+      command: "df -A {{ large_dedupe_volumes_aggrs | join(',') }}"
+      privilege: adv
+      accept_unknown_host_keys: true
+    register: verify_large_dedupe_volumes_aggrs
+
+  - name: Log of verify_large_dedupe_volumes_aggrs
+    include_tasks: tasks/add_log.yml
+    vars: 
+      log: 
+        Verify Large Dedupe Volume Aggrs: "{{ verify_large_dedupe_volumes_aggrs }}"
+
+  - name: Fail playbook if any aggregates containing dedupe volumes are over 97% 
+    include_tasks: tasks/add_failure.yml
+    vars: 
+      failure: 
+        issue: "Aggrs containing deduplicated volumes must not exceed 97% used capacity"
+        details: "{{ verify_large_dedupe_volumes_aggrs['stdout'] }}"
+    when: verify_large_dedupe_volumes_aggrs['stdout'] | regex_findall('([9][7-9]|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
+
+  when: verify_large_dedupe_volumes.msg.num_records > 0

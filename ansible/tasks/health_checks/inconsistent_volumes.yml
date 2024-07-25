@@ -1,0 +1,15 @@
+- name: Check for inconsistent volumes (`volume show -is-inconsistent true`)
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'volume'
+    params: 
+      is-inconsistent: "true"
+    verb: "GET"
+  register: check_for_inconsistent_volumes
+
+- name: Fail playbook if there are any inconsistent volumes
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "There cannot be any inconsistent volumes"
+      records: "{{ check_for_inconsistent_volumes.msg.records | dicts_to_table }}"
+  when: check_for_inconsistent_volumes.msg.num_records > 0

@@ -220,95 +220,15 @@
 
       tags: ["disks"]
 
-    - name: Check for inconsistent volumes
+    - name: Check for inconsistent volumes and validate deduplicated volumes 
       block: 
-      - name: Check for inconsistent volumes (`volume show -is-inconsistent true`)
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'volume'
-          params: 
-            is-inconsistent: "true"
-          verb: "GET"
-        register: check_for_inconsistent_volumes
-
-      - name: Fail playbook if there are any inconsistent volumes
-        include_tasks: tasks/add_failure.yml
-        vars: 
-          failure: 
-            issue: "There cannot be any inconsistent volumes"
-            records: "{{ check_for_inconsistent_volumes.msg.records | dicts_to_table }}"
-        when: check_for_inconsistent_volumes.msg.num_records > 0
-        
-      tags: ["inconsistent_volumes"]
       
-    - name: Validate deduplicated volumes
-      block: 
+      - include_tasks: tasks/health_checks/inconsistent_volumes.yml
 
-      - name: List any deduplicated volumes over 96% 
-              (`volume show -is-sis-volume true -percent-used >96 -fields aggregate,percent-used`)
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'volume'
-          params: 
-            is-sis-volume: "true"
-            percent-used: ">96"
-            fields: "aggregate,percent-used"
-          verb: "GET"
-        register: verify_large_dedupe_volumes
+      - include_tasks: tasks/health_checks/dedupe_volumes.yml      
 
-      - name: Log of verify_large_dedupe_volumes
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["dedupe_volumes"]
-        vars: 
-          log: 
-            Large Deduped Volumes: "{{ verify_large_dedupe_volumes.msg.records | dicts_to_table }}"
-          
-      - block: 
-        - name: If verify_large_dedupe_volumes isn't empty, gather list of aggrs involved 
-          ansible.builtin.set_fact: 
-            large_dedupe_volumes_aggrs: "{{ verify_large_dedupe_volumes.msg.records 
-                                            | map('aggregate') | list }}"
-          
-        - name: Log of large_dedupe_volumes_aggrs
-          include_tasks: tasks/add_log.yml
-          args: 
-            apply:
-              tags: ["dedupe_volumes"]
-          vars: 
-            log: 
-              Large Dedupe Volumes Aggr List: "{{ large_dedupe_volumes_aggrs }}"
-
-        - name: Check aggr containing deduplicated volumes (`df -A <aggr>,<aggr2>`)
-          netapp.ontap.na_ontap_ssh_command:
-            command: "df -A {{ large_dedupe_volumes_aggrs | join(',') }}"
-            privilege: adv
-            accept_unknown_host_keys: true
-          register: verify_large_dedupe_volumes_aggrs
-
-        - name: Log of verify_large_dedupe_volumes_aggrs
-          include_tasks: tasks/add_log.yml
-          args: 
-            apply:
-              tags: ["dedupe_volumes"]
-          vars: 
-            log: 
-              Verify Large Dedupe Volume Aggrs: "{{ verify_large_dedupe_volumes_aggrs }}"
-
-        - name: Fail playbook if any aggregates containing dedupe volumes are over 97% 
-          include_tasks: tasks/add_failure.yml
-          args:
-            apply:
-              tags: ["dedupe_volumes"]
-          vars: 
-            failure: 
-              issue: "Aggrs containing deduplicated volumes must not exceed 97% used capacity"
-              details: "{{ verify_large_dedupe_volumes_aggrs['stdout'] }}"
-          when: verify_large_dedupe_volumes_aggrs['stdout'] | regex_findall('([9][7-9]|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
-
-        when: verify_large_dedupe_volumes.msg.num_records > 0
-      
-      tags: ["dedupe_volumes"]
-
+      tags: ["volumes"]
+            
     - name: Check date and time 
       block: 
 
@@ -333,33 +253,16 @@
 
     - name: Check what jobs are running (pre-upgrade only)
       block:
-      - name: Get running jobs 
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'job'
-          params: 
-            fields: "name,id,node,state,vserver"
-            state: "running"  
-          verb: "GET"
-        register: verify_running_jobs
-      
-      - name: Log of verify_running_jobs
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["jobs"]
-        vars: 
-          log: 
-            running_jobs: "{{ verify_running_jobs }}"
+
+
+      - include_tasks: tasks/health_checks/running_jobs.yml    
 
       - name: Fail playbook if any jobs are running besides {{ allowed_jobs | join(',') }}
         include_tasks: tasks/add_failure.yml  
-        args:
-          apply:
-            tags: ["jobs"]
         vars: 
           failure: 
             issue: "No jobs should be running"
-            details: "{{ verify_running_jobs.msg.records }}"
+            details: "{{ verify_running_jobs.msg.records | dicts_to_table }}"
         when: verify_running_jobs.msg.num_records > 0 
                 and 
               verify_running_jobs.msg.records | map(attribute='name') | difference(allowed_jobs) | length > 0
@@ -367,19 +270,7 @@
       tags: ["jobs"]
       when: post_upgrade_check != True
 
-
-    - block: 
-      - name: Ensure HA is enabled for two node clusters (`netapp.ontap.na_ontap_cluster_ha`)
-        netapp.ontap.na_ontap_cluster_ha:
-          state: present
-        register: enable_ha
-
-      - name: Log of enable_ha
-        include_tasks: tasks/add_log.yml
-        vars: 
-          log: 
-            enable_ha: "{{ enable_ha }}"
-      when: cluster_node_count | int == 2 
+    - include_tasks: tasks/health_checks/ensure_ha.yml    
 
     - name: Summary of health checks 
       block: 
@@ -404,14 +295,13 @@
       - name: Set uptime_and_os
         ansible.builtin.set_fact: 
           uptime_and_os: "{{ verify_ontap_version.msg.records 
-                            | community.general.lists_mergeby(verify_uptime.msg.records, 'node') |
-                            dicts_to_table }}"
+                            | community.general.lists_mergeby(verify_uptime.msg.records, 'node') }}"
 
       - name: Show uptime and current ONTAP Version
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
-            Uptime and OS Info: "{{ uptime_and_os }}"
+            Current Uptime and OS: "{{ uptime_and_os | dicts_to_table }}"
       
       - name: Show summary_logs
         ansible.builtin.debug: 

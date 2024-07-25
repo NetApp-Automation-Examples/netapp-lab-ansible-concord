@@ -1,0 +1,13 @@
+- block: 
+
+  - name: Ensure HA is enabled for two node clusters (`netapp.ontap.na_ontap_cluster_ha`)
+    netapp.ontap.na_ontap_cluster_ha:
+      state: present
+    register: enable_ha
+
+  - name: Log of enable_ha
+    include_tasks: tasks/add_log.yml
+    vars: 
+      log: 
+        enable_ha: "{{ enable_ha }}"
+  when: cluster_node_count | int == 2 

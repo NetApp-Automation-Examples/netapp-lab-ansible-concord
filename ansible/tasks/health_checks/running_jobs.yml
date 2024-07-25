@@ -1,0 +1,14 @@
+- name: Get running jobs (job show -state Running -fields name,id,node,state,vserver)
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'job'
+    params: 
+      fields: "name,id,node,state,vserver"
+      state: "Running"  
+    verb: "GET"
+  register: verify_running_jobs
+
+- name: Log of verify_running_jobs
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      Running Jobs: "{{ verify_running_jobs.msg.records | dicts_to_table }}"
