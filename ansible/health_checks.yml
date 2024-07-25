@@ -209,7 +209,7 @@
       
       - name: Show summary_logs
         ansible.builtin.debug: 
-          var: summary_logs 
+          var: summary_logs
           
       - name: Show summary_warnings
         ansible.builtin.fail: 

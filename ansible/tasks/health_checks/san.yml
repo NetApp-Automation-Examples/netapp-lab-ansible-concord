@@ -33,10 +33,6 @@
       verb: "GET"
     register: verify_iscsi
 
-  - name: Bruh
-    ansible.builtin.debug: 
-      var: verify_iscsi
-
   - name: Log of verify_iscsi
     include_tasks: tasks/add_log.yml
     vars: 
