@@ -1,17 +1,3 @@
-- name: Get cluster info 
-  include_tasks: tasks/rest_info.yml
-  vars: 
-    gather_subset: 
-      - cluster
-      - cluster/nodes
-    parameters:
-      fields: ['*']
-
-- name: Set cluster_info and cluster_nodes
-  ansible.builtin.set_fact: 
-    cluster_info: "{{ ontap_rest_info['cluster'] }}"
-    cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
-
 - name: Make sure key is set if there are no NTP servers
   ansible.builtin.set_fact: 
     cluster_info: "{{ cluster_info | combine({'ntp_servers': []}) }}"

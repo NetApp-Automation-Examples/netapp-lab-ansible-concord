@@ -21,43 +21,26 @@
     check_for_not_online: ["storage/aggregates", "storage/volumes", "svm/svms"]
     post_upgrade_check: False
   tasks:
-    - name: Get basic info needed and set variables (`netapp.ontap.na_ontap_rest_info`)
+    - name: Get cluster info
       block: 
-      
-      - name: |
-          Get cluster, node, aggr, vol, svm, network interfaces, port and SAN info
-          (`netapp.ontap.na_ontap_rest_info`)
+      - name: Get cluster info (`netapp.ontap.na_ontap_rest_info`)
         include_tasks: tasks/rest_info.yml
         vars: 
-          gather_subset: 
+          gather_subset:
             - cluster
             - cluster/nodes
-            - protocols/san/igroups
-            - aggregate_info
-            - volume_info
-            - vserver_info
-            - network/ip/interfaces
-          parameters:
-            fields: ['*']
 
       - name: Set needed variables
         ansible.builtin.set_fact: 
           cluster_info: "{{ ontap_rest_info['cluster'] }}"
           cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
           cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
-          san_igroups: "{{ ontap_rest_info['protocols/san/igroups']['records'] }}"          
-          san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
-          aggregate_info: "{{ ontap_rest_info['storage/aggregates']['records'] }}"
-          volume_info: "{{ ontap_rest_info['storage/volumes']['records'] }}"
-          vserver_info: "{{ ontap_rest_info['svm/svms']['records'] }}"
-          net_int: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
 
-      - name: Log of cluster node count and igroup count 
+      - name: Log of cluster nodes   
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
             Cluster Nodes: "{{ cluster_nodes | map(attribute='name') }}"
-            SAN igroups: "{{ san_igroups | map(attribute='name') }}"
 
       tags: ["always"]
 
@@ -89,96 +72,16 @@
     - name: Make sure cluster epsilon is at last node 
       block: 
 
-      - name: For larger clusters, find epsilon (`cluster show -fields epsilon`)
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'cluster'
-          params: 
-            fields: "epsilon"
-          verb: "GET"
-        register: cluster_epsilon
-
-      - name: Log of cluster_epsilon
-        include_tasks: tasks/add_log.yml
-        vars: 
-          log: 
-            cluster_epsilon: "{{ cluster_epsilon.msg.records | dicts_to_table }}"
-
-      - name: Set first_node and epsilon_node facts 
-        ansible.builtin.set_fact:
-          last_node: "{{ cluster_epsilon.msg.records | last }}"
-          epsilon_node: "{{ cluster_epsilon.msg.records |selectattr('epsilon','true') | first | default(omit) }}"
-
-      - name: Set epsilon to false, if not on last node (`cluster modify -node <epsilonnode> -epsilon false`)     
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'cluster'
-          body: 
-            epsilon: false 
-          params: 
-            node: "{{ epsilon_node.node }}"  
-          verb: "PATCH"
-        register: move_cluster_epsilon
-
-        # Catch edge case where epsilon is not true for any node
-        when: last_node.epsilon == false and epsilon_node is defined 
-
-      - name: Set epsilon to true on last node (`cluster modify -node <lastnode> -epsilon true`)     
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'cluster'
-          body: 
-            epsilon: true 
-          params: 
-            node: "{{ last_node.node }}"
-          verb: "PATCH"
-        register: move_cluster_epsilon
-        when: last_node.epsilon == false
-
-      - name: Log of move_cluster_epsilon
-        include_tasks: tasks/add_log.yml
-        vars: 
-          log: 
-            cluster_epsilon_move: "{{ move_cluster_epsilon }}"
-        when: last_node.epsilon == false
-
-      - name: Confirm epsilon is at last node (`cluster show -fields epsilon`)
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'cluster'
-          params: 
-            fields: "epsilon"
-          verb: "GET"
-        register: cluster_epsilon_confirm
-
-      - name: Log of cluster_epsilon_confirm
-        include_tasks: tasks/add_log.yml
-        vars: 
-          log: 
-            Confirm Cluster Epsilon: "{{ cluster_epsilon_confirm.msg.records | dicts_to_table }}"
-
-      - name: Fail playbook if epsilon is not at last node
-        include_tasks: tasks/add_failure.yml
-        vars:
-          failure: 
-            issue: "{{ last_node.node }} should be epsilon, but currently {{ epsilon_node.node | default('no node') }} is set as epsilon"
-            details: "{{ cluster_epsilon_confirm | dicts_to_table }}"
-        when: cluster_epsilon_confirm.msg.records.0.epsilon == false
+      - include_tasks: tasks/health_checks/move_epsilon.yml    
       
       when: cluster_node_count | int > 2
       tags: ["epsilon"]
     
-    - name: Check SAN configuration, if applicable
+    - name: Check SAN configuration
       block: 
 
       - include_tasks: tasks/health_checks/san.yml    
 
-      - name: Verify SAN host configuration before proceeding
-        include_tasks: tasks/add_warning.yml
-        vars: 
-          warning: 
-            issue: "Verify SAN configuration. Validate server side is set for redundancy."
-            details: 
-              iscsi: "{{ verify_iscsi.msg.records | dicts_to_table }}"
-              fcp: "{{ verify_fcp.msg.records | dicts_to_table }}"
-      
-      when: san_igroups_count | int > 0
       tags: ["san"] 
 
     - name: Check SnapMirrors and SnapShot count
@@ -270,10 +173,11 @@
       tags: ["jobs"]
       when: post_upgrade_check != True
 
-    - include_tasks: tasks/health_checks/ensure_ha.yml    
-
     - name: Summary of health checks 
       block: 
+
+      - include_tasks: tasks/health_checks/ensure_ha.yml    
+        when: cluster_node_count | int == 2 
 
       - name: Get uptime (`system node show -fields uptime`) 
         netapp.ontap.na_ontap_rest_cli: 

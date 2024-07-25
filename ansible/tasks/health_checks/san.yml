@@ -1,44 +1,71 @@
-- name: Verify each node is in SAN quorum (`event log show -message-name scsiblade.*`)
-  netapp.ontap.na_ontap_rest_cli: 
-    command: 'event/log'
-    params: 
-      message-name: "scsiblade.*"
-    verb: "GET"
-  register: verify_san_quorum
-
-- name: Log of verify_san_quorum
-  include_tasks: tasks/add_log.yml
+- name: Get SAN info (`netapp.ontap.na_ontap_rest_info`)
+  include_tasks: tasks/rest_info.yml
   vars: 
-    log: 
-      Verify SAN Quorum: "{{ verify_san_quorum.msg.records | dicts_to_table }}"
-  when: verify_san_quorum.msg.num_records > 0
+    gather_subset:
+      - protocols/san/igroups
 
-- name: Verify SAN (iscsi) configuration. Validate server side is set for redundancy. (`iscsi initiator show -fields igroup,initiator-name,tpgroup`)
-  netapp.ontap.na_ontap_rest_cli: 
-    command: 'iscsi/initiator'
-    params: 
-      fields: "igroup,initiator-name,tpgroup"
-    verb: "GET"
-  register: verify_iscsi
+- name: Set needed variables
+  ansible.builtin.set_fact: 
+    san_igroups: "{{ ontap_rest_info['protocols/san/igroups']['records'] }}"          
+    san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
 
-- name: Log of verify_iscsi
-  include_tasks: tasks/add_log.yml
-  vars: 
-    log: 
-      Verify iSCSI: "{{ verify_iscsi.msg.records | dicts_to_table }}"
-  when: verify_iscsi.msg.num_records > 0
+- block: 
+  - name: Verify each node is in SAN quorum (`event log show -message-name scsiblade.*`)
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'event/log'
+      params: 
+        message-name: "scsiblade.*"
+      verb: "GET"
+    register: verify_san_quorum
 
-- name: Verify SAN (fcp) configuration. Validate server side is set for redundancy. (`fcp initiator show -fields igroup,wwpn,lif`)
-  netapp.ontap.na_ontap_rest_cli: 
-    command: 'vserver/fcp/initiator'
-    params: 
-      fields: "igroup,wwpn,lif"
-    verb: "GET"
-  register: verify_fcp
+  - name: Log of verify_san_quorum
+    include_tasks: tasks/add_log.yml
+    vars: 
+      log: 
+        Verify SAN Quorum: "{{ verify_san_quorum.msg.records | dicts_to_table }}"
+    when: verify_san_quorum.msg.num_records > 0
 
-- name: Log of verify_fcp
-  include_tasks: tasks/add_log.yml
-  vars: 
-    log: 
-      Verify FCP: "{{ verify_fcp.msg.records | dicts_to_table }}"
-  when: verify_fcp.msg.num_records > 0
+  - name: Verify SAN (iscsi) configuration. Validate server side is set for redundancy. (`iscsi initiator show -fields igroup,initiator-name,tpgroup`)
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'iscsi/initiator'
+      params: 
+        fields: "igroup,initiator-name,tpgroup"
+      verb: "GET"
+    register: verify_iscsi
+
+  - name: Bruh
+    ansible.builtin.debug: 
+      var: verify_iscsi
+
+  - name: Log of verify_iscsi
+    include_tasks: tasks/add_log.yml
+    vars: 
+      log: 
+        Verify iSCSI: "{{ verify_iscsi.msg.records | dicts_to_table }}"
+    when: verify_iscsi.msg.num_records > 0
+
+  - name: Verify SAN (fcp) configuration. Validate server side is set for redundancy. (`fcp initiator show -fields igroup,wwpn,lif`)
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'vserver/fcp/initiator'
+      params: 
+        fields: "igroup,wwpn,lif"
+      verb: "GET"
+    register: verify_fcp
+
+  - name: Log of verify_fcp
+    include_tasks: tasks/add_log.yml
+    vars: 
+      log: 
+        Verify FCP: "{{ verify_fcp.msg.records | dicts_to_table }}"
+    when: verify_fcp.msg.num_records > 0
+
+  - name: Verify SAN host configuration before proceeding
+    include_tasks: tasks/add_warning.yml
+    vars: 
+      warning: 
+        issue: "Verify SAN configuration. Validate server side is set for redundancy."
+        details: 
+          iscsi: "{{ verify_iscsi.msg.records | dicts_to_table }}"
+          fcp: "{{ verify_fcp.msg.records | dicts_to_table }}"
+
+  when: san_igroups_count | int > 0
