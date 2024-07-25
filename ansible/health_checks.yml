@@ -29,6 +29,8 @@
           gather_subset:
             - cluster
             - cluster/nodes
+          fields: 
+            - "*"
 
       - name: Set needed variables
         ansible.builtin.set_fact: 
