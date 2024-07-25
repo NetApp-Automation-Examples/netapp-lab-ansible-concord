@@ -1,0 +1,183 @@
+- name: |
+    Check for cluster DNS not being up 
+    (`dns check -vserver {{ cluster_info.name }} !up`)
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'dns/check'
+    params: 
+      status: "!up"
+      vserver: "{{ cluster_info.name }}" 
+    verb: "GET"
+  register: verify_dns_status
+
+- name: Fail playbook if any cluster DNS status is not up
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "All cluster DNS nameservers must be up"
+      records: "{{ verify_dns_status.msg.records | dicts_to_table }}"
+  when: verify_dns_status.msg.num_records > 0
+
+- name: Check to make sure status-oper and status-admin are up 
+        (`net int show -vserver * status-oper !up status-admin !up -fields status-oper,status-admin`)
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'network/interface'
+    params: 
+      status-oper: "!up"
+      status-admin: "!up"
+      fields: "status-oper,status-admin"
+    verb: "GET"
+  register: verify_net_int_status_oper_admin
+
+- name: Fail playbook if any status-oper or status-admin LIFs are not up
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "status-oper and status-admin must be up on all LIFs"
+      records: "{{ verify_net_int_status_oper_admin.msg.records | dicts_to_table }}"
+  when: verify_net_int_status_oper_admin.msg.num_records > 0
+
+# TODO - this feels janky and I think I should be able to do this without a loop
+- name: Check for any LIFs not being home
+  ansible.builtin.set_fact: 
+    net_int_not_home: "{{ net_int_not_home | default([]) + [item] }}"
+  loop: "{{ net_int }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.location.is_home == False
+
+- block:
+  - name: Log of LIFs not home
+    include_tasks: tasks/add_log.yml
+    args: 
+      apply:
+        tags: ["networking"]
+    vars: 
+      log: 
+        LIFs not home: "{{ net_int_not_home | dicts_to_table }}"
+
+  - name: All LIFs should be homed prior to upgrades (`net int revert *`)
+    netapp.ontap.na_ontap_rest_cli:
+      command: "network/interface/revert"
+      params: 
+        "vserver": "*"
+      verb: "PATCH"
+    register: verify_net_int_revert
+
+  - name: Log of verify_net_int_revert
+    include_tasks: tasks/add_log.yml
+    vars: 
+      log:  
+        net int revert * results: "{{ verify_net_int_revert }}"
+  
+  - name: Check to make sure everything got home (`net int show -is-home false`)
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'network/interface'
+      params: 
+        is-home: "false"
+      verb: "GET"
+    register: verify_all_lifs_home
+
+  - name: Log of verify_all_lifs_home
+    include_tasks: tasks/add_log.yml
+    vars: 
+      log: 
+        Are all LIFs home now?: "{{ verify_all_lifs_home.msg.records | dicts_to_table }}"
+
+  - name: Fail playbook if not all LIFs are home 
+    include_tasks: tasks/add_failure.yml
+    args:
+      apply:
+        tags: ["networking"]
+    vars: 
+      failure: 
+        issue: "All LIFs must be home"
+        details: "{{ verify_all_lifs_home.msg.records | dicts_to_table }}"
+    when: verify_all_lifs_home.msg.num_records > 0
+
+  when: net_int_not_home is defined
+
+- name: Get ethernet ports that are UP    
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'network/port'
+    params: 
+      link: "up"
+      fields: "node,mtu,ifgrp-port,health-status,link,broadcast-domain,type"
+    verb: "GET"
+  register: verify_ports
+    
+- name: Log of verify_ports
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      Ports: "{{ verify_ports.msg.records | dicts_to_table }}"
+
+- name: Find any unhealthy ports and/or ports without a broadcast domain
+  ansible.builtin.set_fact: 
+    verify_ports_unhealthy: "{{ verify_ports.msg.records | selectattr('broadcast_domain', 'undefined') | 
+                                selectattr('health_status','!=','healthy') | list }}"
+
+- name: Fail playbook for any unhealthy ports and/or ports without a broadcast domain
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "All up link ports must be healthy and be in a broadcast domain"
+      details: "{{ verify_ports_unhealthy }}"
+  when: verify_ports_unhealthy | length > 0 
+
+- name: Get failover groups (`net int failover-groups show`)
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'network/interface/failover-groups'
+    params: 
+      fields: "vserver,targets,failover-group"
+    verb: "GET"
+  register: verify_failover_groups
+
+- name: Log of verify_failover_groups
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      Failover Groups: "{{ verify_failover_groups.msg.records }}"
+
+- name: Find any invalid failover groups domains
+  ansible.builtin.set_fact: 
+    invalid_failover_groups: "{{ verify_failover_groups.msg.records 
+                                  | ontap_find_invalid_failover_groups(cluster_nodes) }}"
+
+- name: Fail playbook if, for each failover group, a) There isn't at least 1 port from each node 
+          b) The vlan tags do not match
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "Each failover group must have at least 1 port from each node ({{ cluster_nodes | map(attribute='name') | join(',') }}) and the vlan tags must 
+                match"
+      details: "{{ invalid_failover_groups }}"
+  when: invalid_failover_groups | length > 0
+
+- name: Get broadcast domains (`broadcast-domain show`)  
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'network/port/broadcast-domain'
+    params: 
+      fields: "broadcast-domain,ports,mtu,ipspace,failover-groups"
+    verb: "GET"
+  register: verify_broadcast_domains
+
+- name: Log of verify_broadcast_domains
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      Broadcast Domains: "{{ verify_broadcast_domains.msg.records }}"
+
+- name: Find any invalid broadcast domains
+  ansible.builtin.set_fact: 
+    invalid_broadcast_domains: "{{ verify_broadcast_domains.msg.records 
+                                    | ontap_find_invalid_broadcast_domains(cluster_nodes) }}"
+
+- name: Fail playbook if, for each broadcast domain, a) There isn't at least 1 port from each node 
+          b) The vlan tags do not match
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "Each broadcast domain must have at least 1 port from each node ({{ cluster_nodes | map(attribute='name') | join(',') }}) and the vlan tags must 
+                match"
+      details: "{{ invalid_broadcast_domains }}"
+  when: invalid_broadcast_domains | length > 0
