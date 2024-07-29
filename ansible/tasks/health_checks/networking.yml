@@ -1,4 +1,18 @@
 - name: |
+    Get cluster, node, aggr, vol, svm, network interfaces, port and SAN info
+    (`netapp.ontap.na_ontap_rest_info`)
+  include_tasks: tasks/rest_info.yml
+  vars: 
+    gather_subset: 
+      - network/ip/interfaces
+    parameters:
+      fields: ['*']
+
+- name: Set needed variables
+  ansible.builtin.set_fact: 
+    net_int: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
+
+- name: |
     Check for cluster DNS not being up 
     (`dns check -vserver {{ cluster_info.name }} !up`)
   netapp.ontap.na_ontap_rest_cli: 
@@ -131,7 +145,7 @@
       fields: "vserver,targets,failover-group"
     verb: "GET"
   register: verify_failover_groups
-
+  
 - name: Log of verify_failover_groups
   include_tasks: tasks/add_log.yml
   vars: 
