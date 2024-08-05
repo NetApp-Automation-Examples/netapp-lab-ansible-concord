@@ -14,7 +14,7 @@ autoconf
 sudo make
 sudo make altinstall
 python3.9 --version
-sudo alternatives --set python3 /usr/bin/python3.9
+sudo alternatives --set python3 /usr/local/bin/python3.9
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip setuptools
