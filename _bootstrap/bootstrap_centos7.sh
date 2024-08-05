@@ -1,7 +1,6 @@
 #!/bin/sh
 cd /root
 git clone https://github.com/johnwarlick/netapp-lab-ansible-concord.git
-cd netapp-lab-ansible-concord
 yes | \cp -rf _bootstrap/CentOS-7-Base.repo /etc/yum.repos.d/CentOS-Base.repo
 sudo yum install python3 pip -y
 sudo yum install gcc openssl-devel bzip2-devel libffi-devel -y
@@ -19,4 +18,4 @@ cd /root/netapp-lab-ansible-concord
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip setuptools
-pip install -r requirements.txt
+pip install -r ansible/requirements.txt
