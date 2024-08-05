@@ -15,7 +15,7 @@ sudo make altinstall
 sudo update-alternatives --install /usr/local/bin/python3 python3 /usr/local/bin/python3.9 1
 sudo alternatives --set python3 /usr/local/bin/python3.9
 cd .. 
-wget https://ftp.openssl.org/source/openssl-1.1.1k.tar.gz
+wget https://openssl.org/source/openssl-1.1.1k.tar.gz
 tar -xzvf openssl-1.1.1k.tar.gz
 cd openssl-1.1.1k
 autoconf
