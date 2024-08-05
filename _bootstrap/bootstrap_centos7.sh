@@ -28,6 +28,7 @@ source /etc/profile.d/openssl.sh
 cd /root/netapp-lab-ansible-concord
 python3 -m venv venv
 source venv/bin/activate
+cd ansible
 pip install --upgrade pip setuptools
-pip install -r ansible/requirements.txt
+pip install -r requirements.txt
 ansible-galaxy role install -r roles/requirements.yml
