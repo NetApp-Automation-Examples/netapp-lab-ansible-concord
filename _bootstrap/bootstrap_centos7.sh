@@ -14,8 +14,20 @@ sudo make
 sudo make altinstall
 sudo update-alternatives --install /usr/local/bin/python3 python3 /usr/local/bin/python3.9 1
 sudo alternatives --set python3 /usr/local/bin/python3.9
+cd .. 
+wget https://ftp.openssl.org/source/openssl-1.1.1k.tar.gz
+tar -xzvf openssl-1.1.1k.tar.gz
+cd openssl-1.1.1k
+autoconf
+./config --prefix=/usr --openssldir=/etc/ssl --libdir=lib no-shared zlib-dynamic
+make
+make test
+make install
+echo "export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64" >> /etc/profile.d/openssl.sh
+source /etc/profile.d/openssl.sh
 cd /root/netapp-lab-ansible-concord
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip setuptools
 pip install -r ansible/requirements.txt
+ansible-galaxy role install -r roles/requirements.yml
