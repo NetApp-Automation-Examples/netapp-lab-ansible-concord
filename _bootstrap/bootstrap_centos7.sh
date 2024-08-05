@@ -9,7 +9,8 @@ cd /usr/local/src
 wget https://www.python.org/ftp/python/3.9.6/Python-3.9.6.tgz
 tar -xvf Python-3.9.6.tgz
 cd Python-3.9.6
-./configure —-prefix=/usr/local/
+autoconf
+./configure --prefix=/usr/local/
 sudo make
 sudo make altinstall
 python3.9 --version
