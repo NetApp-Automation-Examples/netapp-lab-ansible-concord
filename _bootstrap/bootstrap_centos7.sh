@@ -9,7 +9,7 @@ wget https://openssl.org/source/openssl-1.1.1k.tar.gz
 tar -xzvf openssl-1.1.1k.tar.gz
 cd openssl-1.1.1k
 autoconf
-./config --prefix=/usr --openssldir=/etc/ssl --libdir=lib no-shared zlib-dynamic
+./config --prefix=/usr/local --openssldir=/etc/ssl --libdir=lib no-shared zlib-dynamic
 make
 make test
 make install
