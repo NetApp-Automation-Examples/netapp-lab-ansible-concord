@@ -9,4 +9,4 @@ source venv/bin/activate
 pip install --upgrade pip 
 pip install ansible
 ansible-galaxy role install geerlingguy.docker
-ansible-playbook bootstrap_docker.yml
+ansible-playbook ansible/bootstrap_docker.yml
