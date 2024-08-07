@@ -1,0 +1,36 @@
+---
+- name: Deploy Harvest/Grafana/Prometheus
+  hosts: localhost
+  vars_files:
+  - group_vars/ontap_clusters.yml 
+  roles:
+    - geerlingguy.docker
+  vars: 
+    docker_user: "{{ lookup('env', 'DOCKER_USER') }}" 
+    docker_password: "{{ lookup('env', 'DOCKER_PASSWORD') }}"
+    harvest_clusters: 
+      cluster1: 
+        datacenter: lab
+        addr: cluster1.demo.netapp.com
+        username: "{{ ontap_username }}"
+        password: "{{ ontap_password }}"
+  tasks: 
+  - name: Make harvest.yml file 
+    ansible.builtin.template:
+      src: templates/harvest.yml.j2
+      dest: /harvest/harvest.yml
+
+  - name: Log into DockerHub to avoid rate limit
+    community.docker.docker_login:
+      username: "{{ docker_user }}"
+      password: "{{ docker_password }}"
+
+#   - name: Generate docker compose files 
+# docker run --rm \
+#   --env UID=$(id -u) --env GID=$(id -g) \
+#   --entrypoint "bin/harvest" \
+#   --volume "$(pwd):/opt/temp" \
+#   --volume "$(pwd)/harvest.yml:/opt/harvest/harvest.yml" \
+#   ghcr.io/netapp/harvest \
+#   generate docker full \
+#   --output harvest-compose.yml    
