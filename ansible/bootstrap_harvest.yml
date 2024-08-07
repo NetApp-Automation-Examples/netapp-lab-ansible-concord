@@ -3,34 +3,55 @@
   hosts: localhost
   vars_files:
   - group_vars/ontap_clusters.yml 
-  roles:
-    - geerlingguy.docker
   vars: 
     docker_user: "{{ lookup('env', 'DOCKER_USER') }}" 
     docker_password: "{{ lookup('env', 'DOCKER_PASSWORD') }}"
+    docker_compose_generate: |
+        docker run --rm \
+          --env UID=$(id -u) --env GID=$(id -g) \
+          --entrypoint "bin/harvest" \
+          --volume "$(pwd):/opt/temp" \
+          --volume "$(pwd)/harvest.yml:/opt/harvest/harvest.yml" \
+          ghcr.io/netapp/harvest \
+          generate docker full \
+          --output harvest-compose.yml    
+    docker_compose_up: docker compose -f prom-stack.yml -f harvest-compose.yml up -d --remove-orphans
     harvest_clusters: 
       cluster1: 
         datacenter: lab
         addr: cluster1.demo.netapp.com
+        auth_style: basic_auth
         username: "{{ ontap_username }}"
         password: "{{ ontap_password }}"
   tasks: 
+  - name: Make sure required libraries are installed 
+    ansible.builtin.pip:
+      name: "{{ item }}"
+    loop: 
+      - requests
+      - docker
+  - name: ensures harvest dir exists
+    file: 
+      path: "harvest"
+      state: directory
+
   - name: Make harvest.yml file 
     ansible.builtin.template:
       src: templates/harvest.yml.j2
-      dest: /harvest/harvest.yml
+      dest: harvest/harvest.yml
 
   - name: Log into DockerHub to avoid rate limit
     community.docker.docker_login:
       username: "{{ docker_user }}"
       password: "{{ docker_password }}"
 
-#   - name: Generate docker compose files 
-# docker run --rm \
-#   --env UID=$(id -u) --env GID=$(id -g) \
-#   --entrypoint "bin/harvest" \
-#   --volume "$(pwd):/opt/temp" \
-#   --volume "$(pwd)/harvest.yml:/opt/harvest/harvest.yml" \
-#   ghcr.io/netapp/harvest \
-#   generate docker full \
-#   --output harvest-compose.yml    
+  # Should I probably use a docker ansible module? Yes. Do I care? No. 
+  - name: Generate docker compose files 
+    ansible.builtin.shell: "{{ docker_compose_generate }}"
+    args:
+      chdir: harvest
+
+  - name: Run docker compose up on all the things
+    ansible.builtin.shell: "{{ docker_compose_up }}"
+    args: 
+      chdir: harvest  

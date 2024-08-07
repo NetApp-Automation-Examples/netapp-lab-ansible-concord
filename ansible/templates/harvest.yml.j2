@@ -6,6 +6,8 @@ Exporters:
 
 Defaults:
   collectors:
+    - Rest
+    - RestPerf
     - Zapi
     - ZapiPerf
     - EMS
@@ -14,11 +16,4 @@ Defaults:
     - prometheus1
 
 Pollers:
-{% for cluster in harvest_clusters %}
-  cluster:                # <====== add your cluster(s) here, they use the exporter defined three lines above
-    datacenter: {{ cluster.datacenter | default('lab')}}
-    addr: {{ cluster.addr }}
-    auth_style: basic_auth
-    username: {{ cluster.username }}
-    password: {{ cluster.password }}
-{% endfor %}
+  {{ harvest_clusters|to_nice_yaml}}
