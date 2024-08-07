@@ -7,6 +7,9 @@ sudo yum install python3 -y
 pip3 install --upgrade pip 
 python3 -m venv venv
 source venv/bin/activate
+which python
+which pip 
+pip --version
 pip install ansible
 ansible-galaxy role install geerlingguy.docker
 ansible-playbook bootstrap_docker.yml
