@@ -1,0 +1,5 @@
+---
+- name: Ensure Docker 
+  hosts: localhost
+  roles:
+    - geerlingguy.docker
