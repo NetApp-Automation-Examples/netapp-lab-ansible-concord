@@ -39,7 +39,7 @@ def print_list_of_dicts_as_table(list_of_dicts, keys=None):
             for cell in entry.values():
                 if isinstance(cell, list):
                     cell = ','.join(cell)
-                row.append(cell)
+                row.append(str(cell))
             print(fmtstring.format(*row))
 
     return stream.getvalue()
