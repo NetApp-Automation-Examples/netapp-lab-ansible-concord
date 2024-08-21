@@ -181,6 +181,12 @@
       - include_tasks: tasks/health_checks/ensure_ha.yml    
         when: cluster_node_count | int == 2 
 
+      - name: Show HA (`cluster ha show`) 
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'cluster/ha'
+          verb: "GET"
+        register: verify_ha
+
       - name: Get uptime (`system node show -fields uptime`) 
         netapp.ontap.na_ontap_rest_cli: 
           command: 'system/node'
@@ -207,6 +213,7 @@
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
+            Cluster HA: "{{ verify_ha.msg }}"
             Current Uptime and OS: "{{ uptime_and_os | dicts_to_table }}"
       
       - name: Show summary_logs

@@ -62,12 +62,10 @@
 - block:
   - name: Log of LIFs not home
     include_tasks: tasks/add_log.yml
-    args: 
-      apply:
-        tags: ["networking"]
     vars: 
       log: 
-        LIFs not home: "{{ net_int_not_home | dicts_to_table }}"
+        # TODO: clean this up 
+        LIFs not home: "{{ net_int_not_home }}" #| dicts_to_table }}"
 
   - name: All LIFs should be homed prior to upgrades (`net int revert *`)
     netapp.ontap.na_ontap_rest_cli:
@@ -99,9 +97,6 @@
 
   - name: Fail playbook if not all LIFs are home 
     include_tasks: tasks/add_failure.yml
-    args:
-      apply:
-        tags: ["networking"]
     vars: 
       failure: 
         issue: "All LIFs must be home"
