@@ -6,7 +6,7 @@
     gather_subset: 
       - network/ip/interfaces
     parameters:
-      fields: ['*']
+      fields: 'name,ip,svm,location,state'
 
 - name: Set needed variables
   ansible.builtin.set_fact: 
@@ -65,7 +65,7 @@
     vars: 
       log: 
         # TODO: clean this up 
-        LIFs not home: "{{ net_int_not_home }}" #| dicts_to_table }}"
+        LIFs not home: "{{ net_int_not_home | ontap_flatten_rest_results | dicts_to_table }}"
 
   - name: All LIFs should be homed prior to upgrades (`net int revert *`)
     netapp.ontap.na_ontap_rest_cli:
@@ -93,7 +93,7 @@
     include_tasks: tasks/add_log.yml
     vars: 
       log: 
-        Are all LIFs home now?: "{{ verify_all_lifs_home.msg.records | dicts_to_table }}"
+        LIFs still not home: "{{ verify_all_lifs_home.msg.records | dicts_to_table }}"
 
   - name: Fail playbook if not all LIFs are home 
     include_tasks: tasks/add_failure.yml
