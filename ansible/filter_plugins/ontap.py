@@ -86,6 +86,37 @@ def convert_list_of_short_port_names_to_full(net_port_info, ports=[]):
 
     return port_list
 
+def convert_rest_results_to_flat_list(
+        rest_records, 
+        remove_keys=['_links', 'uuid']):
+    
+    cli_list = []
+    
+    for row in rest_records:
+        for key in remove_keys: 
+            row.pop(key, None)
+
+        if 'svm' in row:
+            svm = row.pop('svm')
+            row['svm'] = svm['name']
+        
+        if 'ip' in row:
+            ip = row.pop('ip')
+            row['ip'] = ip['address']+'/'+ip['netmask'] 
+
+        if 'location' in row:
+            location = row.pop('location')
+            row['is_home'] = location['is_home']
+            row['current'] = location['node']['name']+':'+location['port']['name'] 
+            row['home'] = location['home_node']['name']+':'+location['home_port']['name']
+        
+        cli_list.append(row)
+
+    return cli_list 
+
+    
+
+
 
 def build_list_of_svm_names(vserver_info, types=['data']):
     """Given na_ontap_info's vserver_info subset, return a list of svm names
@@ -232,4 +263,5 @@ class FilterModule(object):
             'ontap_find_invalid_broadcast_domains': return_invalid_broadcast_domains,
             'ontap_ha_pairs': build_list_of_ha_pairs,
             'ontap_version': convert_ontap_version,
+            'ontap_flatten_rest_results': convert_rest_results_to_flat_list,
         }
