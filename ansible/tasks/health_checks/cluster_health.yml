@@ -15,7 +15,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Cluster Health: "{{ cluster_health_log }}"
+      cluster show: "{{ cluster_health_log }}"
 
 - name: Add failure if eligibility or health is not true 
   include_tasks: tasks/add_failure.yml
@@ -23,6 +23,6 @@
     failure: 
       issue: "Health and Eligibility must be `true` for all nodes"
       details: "{{ cluster_health_log }}"
-  when: cluster_health | selectattr('eligibility','eq','false') | 
-        selectattr('health','eq', 'false') | list | length > 0
-
+  when: cluster_health | selectattr('eligibility','false') | list | length > 0 or 
+        cluster_health | selectattr('health','false') | length > 0
+        
