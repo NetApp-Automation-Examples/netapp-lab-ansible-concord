@@ -14,7 +14,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Failover Status: "{{ failover_status | dicts_to_table }}"
+      storage failover show: "{{ failover_status | dicts_to_table }}"
 
 - name: Check for any nodes where failover isn't possible
   ansible.builtin.set_fact: 
@@ -27,7 +27,7 @@
     include_tasks: tasks/add_log.yml
     vars: 
       log: 
-        Failover Not Possible: "{{ failover_not_possible }}"
+        Failover Not Possible: "{{ failover_not_possible | dicts_to_table }}"
 
   - name: Enable storage failover (`netapp.ontap.na_ontap_storage_failover`)
     netapp.ontap.na_ontap_storage_failover:
@@ -35,21 +35,11 @@
       node_name: "{{ failover_not_possible | map(attribute='node') | join(',') }}"
     register: enable_failover
 
-  # - name: Enable failvoer 
-  #   netapp.ontap.na_ontap_rest_cli: 
-  #     command: 'storage/failover'
-  #     body: 
-  #       enabled: true
-  #     params: 
-  #       node: "{{ failover_not_possible | map(attribute='node') | join(',') }}"
-  #     verb: "PATCH"
-  #   register: enable_failover
-
   - name: Log of enable_failover
     include_tasks: tasks/add_log.yml
     vars: 
       log: 
-        enable_failover: "{{ enable_failover }}"
+        netapp.ontap.na_ontap_storage_failover: "{{ enable_failover }}"
 
   - name: Add failure if failover was not enabled on all nodes
     include_tasks: tasks/add_failure.yml
