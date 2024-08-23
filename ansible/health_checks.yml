@@ -38,12 +38,6 @@
           cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
           cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
 
-      - name: Log of cluster nodes   
-        include_tasks: tasks/add_log.yml
-        vars: 
-          log: 
-            Cluster Nodes: "{{ cluster_nodes | map(attribute='name') }}"
-
       tags: ["always"]
 
     - name: Check overall health of the cluster

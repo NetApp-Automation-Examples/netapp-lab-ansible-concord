@@ -3,7 +3,13 @@
     command: 'system/health/alert'
     verb: "GET"
   register: get_health_alerts
-    
+
+- name: Log of get_health_alerts
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      health alert show: "{{ get_health_alerts.msg.records }}"
+
 - name: Add failure if there are critical health alerts
   include_tasks: tasks/add_failure.yml
   vars: 
@@ -29,7 +35,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Subsystem Health: "{{ health_subsystem_log }}"
+      health subsystem show: "{{ health_subsystem_log }}"
 
 - name: Add failure if there are subsystems degraded 
   include_tasks: tasks/add_failure.yml
