@@ -20,36 +20,38 @@
   ansible.builtin.set_fact: 
     failover_not_possible: "{{ failover_status | selectattr('possible','false') | list }}"
 
-- name: Enable failover for any nodes where it's disabled on 4+ node clusters (later, we will ensure two node clusters are in HA mode, which automatically turns on storage failover)  
+- name: Enable failover for any nodes where it's disabled on 4+ node clusters 
   block: 
-
-  - name: Log of failover_not_possible
-    include_tasks: tasks/add_log.yml
-    vars: 
-      log: 
-        Failover Not Possible: "{{ failover_not_possible | dicts_to_table }}"
 
   - name: Enable storage failover (`netapp.ontap.na_ontap_storage_failover`)
     netapp.ontap.na_ontap_storage_failover:
       state: present
-      node_name: "{{ failover_not_possible | map(attribute='node') | join(',') }}"
+      node_name: "{{ item.node }}"
     register: enable_failover
+    loop: "{{ failover_not_possible }}"
 
-  - name: Log of enable_failover
+  - name: Verify failover enabled across the board status 
+          (`storage failover show -enabled false`)  
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'storage/failover'
+      params: 
+        enabled: "false"
+      verb: "GET"
+    register: verify_failover_status
+
+  - name: Log of verify_failover_status
     include_tasks: tasks/add_log.yml
     vars: 
       log: 
-        netapp.ontap.na_ontap_storage_failover: "{{ enable_failover }}"
+        Result of netapp.ontap.na_ontap_storage_failover: "{{ enable_failover.msg }}"
+        storage failover show -enabled false: "{{ verify_failover_status.msg.records | dicts_to_table }}"
 
-  - name: Add failure if failover was not enabled on all nodes
-    include_tasks: tasks/add_failure.yml
-    args:
-      apply:
-        tags: health
+  - name: Fail playbook if failover is still not enabled
+    include_tasks: tasks/add_failure.yml  
     vars: 
       failure: 
-        issue: "Failover was not sucessfully enabled on all nodes"
-        details: "{{ failover_not_possible }}"
-    when: enable_failover.failed == true or enable_failover.msg.num_records != failover_not_possible | length 
-
+        issue: "Failover needs to be enabled on all nodes"
+        details: "{{ verify_failover_status.msg.records | dicts_to_table }}"
+    when: verify_failover_status.msg.num_records > 0 
+  
   when: failover_not_possible | length > 0 and cluster_node_count | int > 2
