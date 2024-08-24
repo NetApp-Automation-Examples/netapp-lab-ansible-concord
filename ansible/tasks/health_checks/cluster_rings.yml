@@ -1,4 +1,5 @@
 - name: Get epoch/quorum master info from the cluster ring 
+        (`cluster ring show -unitname <unit> -fields node,unitname,epoch,db-epoch,db-trnxs,master,online`)
   netapp.ontap.na_ontap_rest_cli: 
     command: 'cluster/ring'
     params: 
@@ -9,17 +10,16 @@
   loop_control:
     label: "{{ item }}"
   register: verify_cluster_rings
-
+  
 - name: Log of verify_cluster_rings
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Verify Cluster Rings: "{{ item.msg.records | dicts_to_table }}"
+      cluster ring show -unitname <unit>: "{{ item.msg.records | dicts_to_table }}"
   loop: "{{ verify_cluster_rings.results }}"
   loop_control:
     label: "{{ item.item }}"
 
-  
 - name: Add failure if a.) the per-ring relational database epoch and database epoch do not match for 
         each node
         b.) the per-ring quorum master is not the same for all nodes. 
