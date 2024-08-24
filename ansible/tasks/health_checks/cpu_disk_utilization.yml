@@ -10,13 +10,13 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      cpu_disk_check: "{{ cpu_disk_check.stdout }}"
+      statistics show-periodic -preset sysstat_utilization -iterations 10 -interval 3: "{{ cpu_disk_check.stdout }}"
 
 - name: Add warning cpu_disk_check having anything over 50% in the stdout
   include_tasks: tasks/add_warning.yml
   vars: 
     warning:
-      issue: "There are CPU and disk utilizations over 50%."
+      issue: "There are CPU and/ors disk utilizations over 50%."
       details: "{{ cpu_disk_check['stdout'] }}"
   when: cpu_disk_check | regex_findall('([5-9]\\d|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
 
