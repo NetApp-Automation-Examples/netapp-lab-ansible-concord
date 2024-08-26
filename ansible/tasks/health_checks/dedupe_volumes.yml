@@ -13,7 +13,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Deduped Volumes Over 96%: "{{ verify_large_dedupe_volumes.msg.records | dicts_to_table }}"
+      volume show -is-sis-volume true -percent-used >96: "{{ verify_large_dedupe_volumes.msg.records | dicts_to_table }}"
     
 - block: 
   - name: If verify_large_dedupe_volumes isn't empty, gather list of aggrs involved 
