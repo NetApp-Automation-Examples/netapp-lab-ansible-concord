@@ -22,10 +22,10 @@
     include_tasks: tasks/add_log.yml
     vars: 
       log: 
-        Verify SAN Quorum: "{{ verify_san_quorum.msg.records | dicts_to_table }}"
-    when: verify_san_quorum.msg.num_records > 0
+        event log show -message-name scsiblade.*: "{{ verify_san_quorum.msg.records | dicts_to_table }}"
 
-  - name: Verify SAN (iscsi) configuration. Validate server side is set for redundancy. (`iscsi initiator show -fields igroup,initiator-name,tpgroup`)
+  - name: Verify SAN (iscsi) configuration. Validate server side is set for redundancy. 
+          (`iscsi initiator show -fields igroup,initiator-name,tpgroup`)
     netapp.ontap.na_ontap_rest_cli: 
       command: 'iscsi/initiator'
       params: 
@@ -37,10 +37,10 @@
     include_tasks: tasks/add_log.yml
     vars: 
       log: 
-        Verify iSCSI: "{{ verify_iscsi.msg.records | dicts_to_table }}"
-    when: verify_iscsi.msg.num_records > 0
+        iscsi initiator show -fields igroup,initiator-name,tpgroup: "{{ verify_iscsi.msg.records | dicts_to_table }}"
 
-  - name: Verify SAN (fcp) configuration. Validate server side is set for redundancy. (`fcp initiator show -fields igroup,wwpn,lif`)
+  - name: Verify SAN (fcp) configuration. Validate server side is set for redundancy. 
+          (`fcp initiator show -fields igroup,wwpn,lif`)
     netapp.ontap.na_ontap_rest_cli: 
       command: 'vserver/fcp/initiator'
       params: 
@@ -52,8 +52,7 @@
     include_tasks: tasks/add_log.yml
     vars: 
       log: 
-        Verify FCP: "{{ verify_fcp.msg.records | dicts_to_table }}"
-    when: verify_fcp.msg.num_records > 0
+        fcp initiator show -fields igroup,wwpn,lif: "{{ verify_fcp.msg.records | dicts_to_table }}"
 
   - name: Verify SAN host configuration before proceeding
     include_tasks: tasks/add_warning.yml

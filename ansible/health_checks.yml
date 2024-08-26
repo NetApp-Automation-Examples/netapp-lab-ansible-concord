@@ -64,14 +64,15 @@
       - include_tasks: tasks/health_checks/cluster_rings.yml    
 
       tags: ["cluster_rings"]
-    
-    - name: Make sure cluster epsilon is at last node 
-      block: 
 
-      - include_tasks: tasks/health_checks/move_epsilon.yml    
+    # Not sure this is neccessary     
+    # - name: Make sure cluster epsilon is at last node 
+    #   block: 
+
+    #   - include_tasks: tasks/health_checks/move_epsilon.yml    
       
-      when: cluster_node_count | int > 2
-      tags: ["epsilon"]
+    #   when: cluster_node_count | int > 2
+    #   tags: ["epsilon"]
     
     - name: Check SAN configuration
       block: 
