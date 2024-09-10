@@ -6,7 +6,7 @@ configuration:
     - "mvn://com.walmartlabs.concord.plugins.basic:ansible-tasks:2.9.0"
 
   arguments: 
-    docker_image: jwarlicknetapp.azurecr.io/concord-ansible-netapp
+    docker_image: ghcr.io/netapp-automation-examples/concord-ansible-netapp
     ansible_config: ansible/ansible-concord.cfg
     ansible_inventory: ansible/inventory
     cluster_choices: ['cluster1','cluster2','clab1']
