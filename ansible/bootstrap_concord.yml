@@ -76,7 +76,7 @@
         password: "{{ docker_password }}"
 
     - name: Run docker-compose up 
-      community.docker.docker_compose_v2:
+      community.docker.docker_compose: #_v2
         project_src: "{{ concord_compose_folder }}"
       register: docker_compose_up
 
