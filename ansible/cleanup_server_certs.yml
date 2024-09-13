@@ -1,7 +1,6 @@
 ---
 - name: Clean up leftover, unused server certificates 
   hosts: "{{ ansible_limit | default('localhost') }}"
-  gather_facts: yes
   connection: 'local'
   collections:
     - netapp.ontap
