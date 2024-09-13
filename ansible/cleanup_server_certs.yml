@@ -41,10 +41,6 @@
         serial_number: "!{{ active_certs | flatten | map(attribute='serial') | join(',!') }}"
       fields: ['expiry_time', 'svm', 'common_name','ca', 'serial_number']
 
-  - name: Log 
-    ansible.builtin.debug:
-     var: "!{{ active_certs | flatten | map(attribute='serial') | join(',!') }}"
-
   - name: Set unused_certs fact
     ansible.builtin.set_fact:
       unused_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
