@@ -1,0 +1,71 @@
+---
+- name: Clean up leftover, unused server certificates 
+  hosts: "{{ ansible_limit | default('localhost') }}"
+  gather_facts: yes
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars: 
+    dry_run: True
+  tasks:
+  - name: Get all currently used certs. We'll use this to ensure we only delete
+          inactive certs (security ssl show)
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'security/ssl'
+      params: 
+        fields: "ca,common-name,serial" 
+      verb: "GET"
+    register: get_active_certs
+
+  - name: Set active_certs fact 
+    ansible.builtin.set_fact:
+      active_certs: "{{ get_active_certs['msg']['records'] }}"
+
+
+  - name: Log of active_certs
+    ansible.builtin.debug: 
+      var: active_certs | dicts_to_table
+
+  - name: Get all server certificates that are not in active_certs 
+    include_tasks: tasks/rest_info.yml
+    vars: 
+      gather_subset: ['security/certificates']
+      parameters: 
+        type: server
+        serial_number: "!{{ active_certs | flatten | map(attribute='serial') | join(',!') }}"
+      fields: ['expiry_time', 'svm', 'common_name','ca', 'serial_number']
+
+  - name: Log 
+    ansible.builtin.debug:
+     var: "!{{ active_certs | flatten | map(attribute='serial') | join(',!') }}"
+
+  - name: Set unused_certs fact
+    ansible.builtin.set_fact:
+      unused_certs: "{{ ontap_rest_info['security/certificates']['records'] }}"
+
+  - name: "The following certificates are marked for deletion" 
+    ansible.builtin.debug:
+      var: unused_certs | ontap_flatten_rest_results
+
+  - name: End play when dry_run == True
+    meta: end_play
+    when: dry_run == True
+
+  - name: Delete unsed_certs 
+    netapp.ontap.na_ontap_security_certificates: 
+      state: absent
+      name: "{{ item.name }}"
+      common_name: "{{ item.common_name }}"
+      type: server
+      svm: "{{ item.svm.name if item.svm is defined else omit }}"
+    loop: "{{ unused_certs }}"
+    loop_control: 
+      label: "{{ item.common_name }} - {{ item.serial_number }} - {{ item.expiry_time }}"
+
