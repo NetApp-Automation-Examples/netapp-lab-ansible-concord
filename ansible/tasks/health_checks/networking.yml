@@ -93,7 +93,7 @@
     include_tasks: tasks/add_log.yml
     vars: 
       log: 
-        LIFs still not home: "{{ verify_all_lifs_home.msg.records | dicts_to_table }}"
+        net int show -is-home false: "{{ verify_all_lifs_home.msg.records | dicts_to_table }}"
 
   - name: Fail playbook if not all LIFs are home 
     include_tasks: tasks/add_failure.yml
@@ -118,7 +118,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Ports: "{{ verify_ports.msg.records | dicts_to_table }}"
+      network port show -link up: "{{ verify_ports.msg.records | dicts_to_table }}"
 
 - name: Find any unhealthy ports and/or ports without a broadcast domain
   ansible.builtin.set_fact: 
@@ -145,7 +145,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Failover Groups: "{{ verify_failover_groups.msg.records }}"
+      net int failover-groups show: "{{ verify_failover_groups.msg.records }}"
 
 - name: Find any invalid failover groups domains
   ansible.builtin.set_fact: 
@@ -174,7 +174,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Broadcast Domains: "{{ verify_broadcast_domains.msg.records }}"
+      broadcast-domain show: "{{ verify_broadcast_domains.msg.records }}"
 
 - name: Find any invalid broadcast domains
   ansible.builtin.set_fact: 

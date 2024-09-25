@@ -212,7 +212,7 @@
       delay: "{{ failover_status_delay }}" 
     when: node_state == 'waiting_for_giveback' or takeover_status is defined
 
-  - name: Validate ports and revert LIFs
+  - name: Validate ports and revert LIFs (`net port show -node <node>`)
     block: 
     - name: net port show -node <node>
       netapp.ontap.na_ontap_rest_cli: 
@@ -224,7 +224,7 @@
 
     - name: Log of net_port_show
       ansible.builtin.debug: 
-        var: net_port_show 
+        var: net_port_show.msg.records | dicts_to_table 
 
     - name: net int revert * 
       block: 

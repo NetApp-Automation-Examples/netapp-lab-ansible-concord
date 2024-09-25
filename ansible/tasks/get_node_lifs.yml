@@ -13,9 +13,9 @@
   ansible.builtin.set_fact: 
     node_lifs: "{{ get_node_lifs.response.records }}"
 
-- name: Log node_lifs
-  ansible.builtin.debug: 
-    var: node_lifs | pprint
+# - name: Log node_lifs
+#   ansible.builtin.debug: 
+#     var: node_lifs | pprint
 
 - name: Log node_lifs
   ansible.builtin.debug: 

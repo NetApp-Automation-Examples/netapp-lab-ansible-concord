@@ -10,7 +10,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      cluster_epsilon: "{{ cluster_epsilon.msg.records | dicts_to_table }}"
+      cluster show -fields epsilon: "{{ cluster_epsilon.msg.records | dicts_to_table }}"
 
 - name: Set first_node and epsilon_node facts 
   ansible.builtin.set_fact:
@@ -45,7 +45,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      cluster_epsilon_move: "{{ move_cluster_epsilon }}"
+      cluster modify -node <lastnode> -epsilon true: "{{ move_cluster_epsilon }}"
   when: last_node.epsilon == false
 
 - name: Confirm epsilon is at last node (`cluster show -fields epsilon`)
@@ -60,7 +60,7 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Confirm Cluster Epsilon: "{{ cluster_epsilon_confirm.msg.records | dicts_to_table }}"
+      cluster show -fields epsilon: "{{ cluster_epsilon_confirm.msg.records | dicts_to_table }}"
 
 - name: Fail playbook if epsilon is not at last node
   include_tasks: tasks/add_failure.yml

@@ -7,5 +7,5 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Enable HA module results: "{{ enable_ha }}"
+      netapp.ontap.na_ontap_cluster_ha: "{{ enable_ha }}"
   when: "{{ enable_ha.changed }}"

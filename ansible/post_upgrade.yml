@@ -1,5 +1,5 @@
 ---
-- name: Pre/Post framing of ONTAP Upgrade
+- name: Post ONTAP Upgrade Steps
   hosts: "{{ clusters | default('localhost') }}"
   gather_facts: no
   connection: 'local'
@@ -42,9 +42,9 @@
         verb: "GET"
       register: confirm_autogiveback
 
-    - name: Set confirm_autogiveback 
+    - name: Log of confirm_autogiveback 
       ansible.builtin.debug: 
-        var: confirm_autogiveback
+        var: confirm_autogiveback.msg.records | dicts_to_table
 
     - name: Set autogiveback_still_false check 
       ansible.builtin.set_fact:

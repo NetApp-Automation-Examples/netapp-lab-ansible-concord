@@ -260,6 +260,10 @@
         verb: "GET"
       register: verify_node_image_set
 
+    - name: Log of verify_node_image_set
+      ansible.builtin.debug: 
+        var: verify_node_image_set.msg.records | dicts_to_table 
+
     - name: >
         Set new_package_is_default
         (verify_node_image_set -> filter by image == {{ new_image_name }} -> map by isdefault) 

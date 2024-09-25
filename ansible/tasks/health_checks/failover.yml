@@ -43,7 +43,7 @@
     include_tasks: tasks/add_log.yml
     vars: 
       log: 
-        Result of netapp.ontap.na_ontap_storage_failover: "{{ enable_failover.msg }}"
+        netapp.ontap.na_ontap_storage_failover: "{{ enable_failover.msg }}"
         storage failover show -enabled false: "{{ verify_failover_status.msg.records | dicts_to_table }}"
 
   - name: Fail playbook if failover is still not enabled

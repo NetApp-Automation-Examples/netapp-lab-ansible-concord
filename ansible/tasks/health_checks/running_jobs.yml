@@ -11,4 +11,4 @@
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      Running Jobs: "{{ verify_running_jobs.msg.records | dicts_to_table }}"
+      job show -state Running: "{{ verify_running_jobs.msg.records | dicts_to_table }}"
