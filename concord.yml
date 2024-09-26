@@ -139,7 +139,7 @@ flows:
         in: 
           ontap_clusters: ${upgrade_clusters}
           ontap_package_version: ${upgrade_package_version}
-          ontap_package_url: ${upgrade_image_url}s
+          ontap_package_url: ${upgrade_image_url}
         out: pre_upgrade_results
         retry:
           in: 
