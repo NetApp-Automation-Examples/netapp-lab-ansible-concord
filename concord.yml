@@ -129,19 +129,15 @@ flows:
     - if: ${skip_pre_upgrade == false}
       then:
       - log: "Run the pre-upgrade tasks"
-      - task: ansible
-        in:
-          dockerImage: ${docker_image}
-          configFile: ${ansible_config}
-          inventoryFile: ${ansible_inventory}
-          playbook: ansible/pre_upgrade.yml
-          extraVars:
-            clusters: ${upgrade_clusters} 
-            ontap_creds: ${ontap_creds}
-            ontap_package_version: ${upgrade_package_version}
-            ontap_package_url: ${upgrade_image_url}
-        out: pre_upgrade
+      - call: pre_upgrade_playbook
+        in: 
+          ontap_clusters: ${upgrade_clusters}
+          ontap_package_version: ${upgrade_package_version}
+          ontap_package_url: ${upgrade_image_url}s
+        out: pre_upgrade_results
         retry:
+          in: 
+            pre_upgrade_failed: true
           times: ${pre_upgrade_retry}
       else: 
       - log: "Skipping pre-upgrade steps per form selection."
@@ -329,7 +325,28 @@ flows:
             slack_emoji: ":stop:"
             slack_text: "ONTAP Upgrade concord process ended by ${review_form.submittedBy.displayName}"
         - exit
-    
+  
+  pre_upgrade_playbook: 
+    - log: "pre_upgrade_failed value = ${pre_upgrade_failed}"
+    - if: ${pre_upgrade_failed == true}
+      then:
+        - call: review
+    - task: ansible
+      in:
+        dockerImage: ${docker_image}
+        configFile: ${ansible_config}
+        inventoryFile: ${ansible_inventory}
+        playbook: ansible/pre_upgrade.yml
+        extraVars:
+          clusters: ${ontap_clusters} 
+          ontap_creds: ${ontap_creds}
+          ontap_package_version: ${ontap_package_version}
+          ontap_package_url: ${ontap_package_url}
+      out: pre_upgrade_out
+    - set:
+        pre_upgrade_results: ${pre_upgrade_out}
+
+
   health_checks_playbook:
     - log: "health_checks_failed value = ${health_checks_failed}"
     - if: ${health_checks_failed == true}
