@@ -26,6 +26,11 @@ configuration:
     default_slack_text: ""
     default_slack_emoji: ":concord:"
 
+  out:  
+    - flowout.exitCode   
+    - flowout.out_msg.localhost  
+    - flowout.out_run.localhost
+
 publicFlows:
   - main
   - dev
