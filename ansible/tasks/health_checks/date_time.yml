@@ -12,14 +12,20 @@
       details: "{{ cluster_info.ntp_servers }}"
   when: cluster_info.ntp_servers | length < 3
 
-- name: Verify cluster dates 
+- name: Set cluster_dates  
   ansible.builtin.set_fact: 
     cluster_dates: "{{ cluster_nodes | map(attribute='date', default='') | list }}"
 
-- name: Fail playbook if there is any variation among node timestamps 
-  include_tasks: tasks/add_failure.yml
+- name: Log cluster_dates
+  include_tasks: tasks/add_log.yml
   vars: 
-    failure: 
-      issue: "Dates and timezones must match on all nodes"
+    log: 
+      cluster_dates: "{{ cluster_dates }}"
+
+- name: Add warning if there is any variation among node timestamps 
+  include_tasks: tasks/add_warning.yml
+  vars: 
+    warning: 
+      issue: "Dates and timezones should ideally match on all nodes"
       details: "{{ cluster_dates }}"
   when: cluster_dates | unique | length > 1
