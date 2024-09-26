@@ -12,20 +12,34 @@
       details: "{{ cluster_info.ntp_servers }}"
   when: cluster_info.ntp_servers | length < 3
 
-- name: Set cluster_dates  
+- name: Show Datetime (`cluster date show`) 
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'cluster/date'
+    params: 
+      fields: "node,date,timezone"
+    verb: "GET"
+  register: verify_datetime
+  
+- name: Set cluster_datetime 
   ansible.builtin.set_fact: 
-    cluster_dates: "{{ cluster_nodes | map(attribute='date', default='') | list }}"
+    cluster_datetime: "{{ verify_datetime.msg.records }}"
 
-- name: Log cluster_dates
+- name: Log of Cluster Datetime
   include_tasks: tasks/add_log.yml
   vars: 
     log: 
-      cluster_dates: "{{ cluster_dates }}"
+      cluster date show: "{{ cluster_datetime | dicts_to_table }}"
+
+- name: Set cluster_dates_compare and cluster_timezone_compare  
+  ansible.builtin.set_fact: 
+    cluster_timezone_compare: "{{ cluster_datetime | map(attribute='timezone', default='') | list }}"
+    cluster_dates_compare: "{{ cluster_datetime | map(attribute='date', default='') | list }}"
 
 - name: Add warning if there is any variation among node timestamps 
   include_tasks: tasks/add_warning.yml
   vars: 
     warning: 
       issue: "Dates and timezones should ideally match on all nodes"
-      details: "{{ cluster_dates }}"
-  when: cluster_dates | unique | length > 1
+      details: "{{ cluster_datetime | dicts_to_table }}"
+  when: cluster_dates_compare | unique | length > 1 
+        or cluster_timezone_compare | unique | length > 1 
