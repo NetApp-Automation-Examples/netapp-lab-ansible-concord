@@ -13,6 +13,7 @@
       validate_certs: "{{ validate_certs }}"
   vars: 
     dry_run: True
+    exclude_future_expire_dates: True
   tasks:
   - name: Get all currently used certs. We'll use this to ensure we only delete
           inactive certs (security ssl show)
@@ -32,12 +33,14 @@
     ansible.builtin.debug: 
       var: active_certs | dicts_to_table
 
-  - name: Get all server certificates that are not in active_certs 
+  - name: "Get all server certificates that are not in active_certs 
+          {{ 'and are not expiring in the future' if exclude_future_expire_dates == true }}"
     include_tasks: tasks/rest_info.yml
     vars: 
       gather_subset: ['security/certificates']
       parameters: 
         type: server
+        expiry_time: "{{ '<=' + now(fmt='%Y-%m-%d %H:%M:%S') if exclude_future_expire_dates == true else omit }}"
         serial_number: "!{{ active_certs | flatten | map(attribute='serial') | join(',!') }}"
       fields: ['expiry_time', 'svm', 'common_name','ca', 'serial_number']
 
