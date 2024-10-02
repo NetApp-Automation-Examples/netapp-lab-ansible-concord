@@ -116,13 +116,13 @@ flows:
           - lifs_to_test
           - ha_pairs_to_upgrade
       out: get_lifs_and_ha_pairs
-    - log: ${get_lifs_and_ha_pairs}
+    # - log: ${get_lifs_and_ha_pairs}
     - set: 
         lifs_to_test: ${get_lifs_and_ha_pairs.lifs_to_test}
         ha_pairs_to_upgrade: ${get_lifs_and_ha_pairs.ha_pairs_to_upgrade}
         # for the time being don't mess with the "js" file 
         ha_pairs: ${get_lifs_and_ha_pairs.ha_pairs_to_upgrade}
-    - log: "lifs_to_test = ${lifs_to_test}"
+    # - log: "lifs_to_test = ${lifs_to_test}"
     - log: "ha_pairs_to_upgrade = ${ha_pairs_to_upgrade}"
     - script: scripts/sequential_nodes_list.js
       error:
@@ -157,7 +157,7 @@ flows:
       out: ping_test_results
     - set: 
         ping_test_baseline: ${ping_test_results.lifs_ping_test_results}
-    - log: ping_test_baseline = ${ping_test_baseline}
+    # - log: ping_test_baseline = ${ping_test_baseline}
 
     - log: Run the takeover_giveback on each ha pair sequentially 
     - call: upgrade_node
@@ -184,7 +184,7 @@ flows:
           clusters: ${upgrade_clusters} 
           ontap_creds: ${ontap_creds}
       out: post_upgrade
-    - log: "Post upgrade results: ${post_upgrade}"
+    # - log: "Post upgrade results: ${post_upgrade}"
     - call: health_checks 
       in: 
         health_checks_clusters: ${health_checks_form.clusters} 
@@ -249,7 +249,7 @@ flows:
         lifs_to_test: ${ping_test_lifs}
         lifs_baseline_ping_test: ${ping_test_baseline}
       out: ping_test_results
-    - log: ${ping_test_results}
+    # - log: ${ping_test_results}
     - log: "Ping tests playbook ran succesfully"
     - if: ${hasVariable('ping_test_results.lifs_diff_ping_test_results') and ping_test_results.lifs_diff_ping_test_results != ""} 
       then: 
