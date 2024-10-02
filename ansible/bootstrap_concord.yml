@@ -88,9 +88,6 @@
   
   - name: Configure Concord 
     block: 
-    - name: Display API token
-      ansible.builtin.debug:
-        var: default_admin_token
     
     - name: Get deploy key 
       block: 
@@ -205,6 +202,9 @@
           var: create_project
       when: get_project.status == 404
 
+    - name: Display API token
+      ansible.builtin.debug:
+        var: default_admin_token
 
     tags: configure
   
