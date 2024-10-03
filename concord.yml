@@ -54,6 +54,12 @@ forms:
 flows:
   dev: 
     - set:
+        test: "UPPERCASE.domain.com"
+    - log: ${test}
+    - log: ${test.toLowerCase()}
+    - exit
+
+    - set:
         upgrade_clusters: "cluster1"
         upgrade_image_url: "http://dummy.url"
     - task: ansible
