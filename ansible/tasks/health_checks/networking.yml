@@ -1,5 +1,5 @@
 - name: |
-    Get cluster, node, aggr, vol, svm, network interfaces, port and SAN info
+    Get network interfacess
     (`netapp.ontap.na_ontap_rest_info`)
   include_tasks: tasks/rest_info.yml
   vars: 
@@ -49,6 +49,14 @@
       issue: "status-oper and status-admin must be up on all LIFs"
       records: "{{ verify_net_int_status_oper_admin.msg.records | dicts_to_table }}"
   when: verify_net_int_status_oper_admin.msg.num_records > 0
+
+- name: Add LIFs to log
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      # TODO: clean this up 
+      netapp.ontap.na_ontap_rest_info subset=network/ip/interfaces: "{{ net_int | ontap_flatten_rest_results | dicts_to_table }}"
+
 
 # TODO - this feels janky and I think I should be able to do this without a loop
 - name: Check for any LIFs not being home
