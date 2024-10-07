@@ -242,7 +242,9 @@ def validate_port_group(ports_list, cluster_nodes):
 def convert_ontap_version(version_dict):
     """Given a version dict from ONTAP REST API, return the version in 
     x.x.x format"""
-    return str(version_dict['generation'])+'.'+str(version_dict['major'])+'.'+str(version_dict['minor'])
+    # This was missing patch versions 
+    #return str(version_dict['generation'])+'.'+str(version_dict['major'])+'.'+str(version_dict['minor'])
+    return version_dict['full'].split(':', 1)[0].replace('NetApp Release','').strip()
 
 
 # Any python file you put in filter_plugins/ with this class structure 

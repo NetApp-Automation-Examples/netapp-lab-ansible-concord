@@ -13,7 +13,7 @@
     # THe official reccomendation during an upgrade is 8 minutes 
     pause_in_seconds_between_takeover_giveback: 480
     takeover_option: "normal"
-    target_ontap_version: "9.10.1"
+    target_ontap_version: "9.11.1P1"
     override_vetoes: "false"
     nodes: []
     nodes:
