@@ -218,6 +218,7 @@
       netapp.ontap.na_ontap_rest_cli: 
         command: 'network/port'
         params: 
+          fields: "port,ipspace,broadcast-domain,link,health-status"
           node: "{{ node }}"
         verb: "GET"
       register: net_port_show
