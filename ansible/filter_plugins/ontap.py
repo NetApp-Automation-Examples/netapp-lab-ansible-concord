@@ -240,12 +240,30 @@ def validate_port_group(ports_list, cluster_nodes):
     return False
 
 def convert_ontap_version(version_dict):
-    """Given a version dict from ONTAP REST API, return the version in 
-    x.x.x format"""
-    # This was missing patch versions 
-    #return str(version_dict['generation'])+'.'+str(version_dict['major'])+'.'+str(version_dict['minor'])
-    return version_dict['full'].split(':', 1)[0].replace('NetApp Release','').strip()
+    """Given an ONTAP version dict from ONTAP REST API 
+    (i.e. NetApp Release 9.11.1P1: Tue Aug 09 13:13:19 UTC 2022) 
+    return the version in 'x.x.x' i.e. '9.11.1.P1' format"""
+    error_msg = "Expected ONTAP Version string should be in format similar to this: \
+                'NetApp Release 9.11.1P1: Tue Aug 09 13:13:19 UTC 2022' but instead \
+                got '"
 
+    if isinstance(version_dict, dict) == False or 'full' not in version_dict:    
+         raise AnsibleFilterError("You must pass a dict from ONTAP Rest API cluster cluster/nodes results with the `version` field")
+
+    try: 
+        # This was missing patch versions 
+        #return str(version_dict['generation'])+'.'+str(version_dict['major'])+'.'+str(version_dict['minor'])
+        version_string = version_dict['full'].split(':', 1)[0].replace('NetApp Release','').strip()
+
+        # There should be several periods in the output, if there is not 
+        # something is wrong, abort
+        if "." not in version_string: 
+            raise exception
+
+        return version_string 
+
+    except:
+        raise AnsibleFilterError(error_msg+version_dict['full']+"'")
 
 # Any python file you put in filter_plugins/ with this class structure 
 # will get picked up by your playbooks. You just need to map each 
