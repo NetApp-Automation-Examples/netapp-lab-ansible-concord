@@ -1,6 +1,6 @@
 ---
-- name: Run Through Health Checks Before/After Upgrading ONTAP   
-  hosts: "{{ ansible_limit }}"
+- name: "Run Upgrade Health Checks on {{ clusters }}"
+  hosts: "{{ clusters | default('localhost') }}"
   gather_facts: no
   connection: 'local'
   collections:
@@ -19,44 +19,30 @@
     allowed_jobs: ["FabricPool Space Job", "SP Certificate Expiry Check Job"]
     cluster_rings: ["vldb","mgmt","vifmgr","bcomd","crs"]
     check_for_not_online: ["storage/aggregates", "storage/volumes", "svm/svms"]
+    post_upgrade_check: False
+    pre_or_post_task_name: Run {{ 'post' if post_upgrade_check else 'pre' }}-upgrade health checks 
+  pre_tasks: 
+    - name: "{{ pre_or_post_task_name }}"
+      ansible.builtin.debug:
+        var: post_upgrade_check
   tasks:
-    - name: Get basic info needed and set variables (`netapp.ontap.na_ontap_rest_info`)
+
+    - name: Get cluster info
       block: 
-      
-      - name: Get cluster, node, aggr, vol, svm, network interfaces, port and SAN info
-        include_tasks: tasks/ontap_get_cluster_info_rest.yml
+      - name: Get cluster info (`netapp.ontap.na_ontap_rest_info`)
+        include_tasks: tasks/rest_info.yml
         vars: 
-          gather_subset: 
+          gather_subset:
             - cluster
             - cluster/nodes
-            - protocols/san/igroups
-            - aggregate_info
-            - volume_info
-            - vserver_info
-            - network/ip/interfaces
-          parameters:
-            fields: ['*']
+          fields: 
+            - "*"
 
       - name: Set needed variables
         ansible.builtin.set_fact: 
           cluster_info: "{{ ontap_rest_info['cluster'] }}"
           cluster_node_count: "{{ ontap_rest_info['cluster/nodes']['num_records'] }}"
           cluster_nodes: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
-          san_igroups: "{{ ontap_rest_info['protocols/san/igroups']['records'] }}"          
-          san_igroups_count: "{{ ontap_rest_info['protocols/san/igroups']['num_records'] }}"
-          aggregate_info: "{{ ontap_rest_info['storage/aggregates']['records'] }}"
-          volume_info: "{{ ontap_rest_info['storage/volumes']['records'] }}"
-          vserver_info: "{{ ontap_rest_info['svm/svms']['records'] }}"
-          net_int: "{{ ontap_rest_info['network/ip/interfaces']['records'] }}"
-
-      - name: Log of cluster node count and igroup count 
-        include_tasks: tasks/add_log.yml
-        vars: 
-          log: 
-            cluster_nodes: "{{ cluster_nodes | map(attribute='name') }}"
-            cluster_node_count: "{{ cluster_node_count | int }}"
-            san_igroups_count: "{{ san_igroups_count | int }}"
-            san_igroups: "{{ san_igroups | map(attribute='name') }}"
 
       tags: ["always"]
 
@@ -84,99 +70,21 @@
       - include_tasks: tasks/health_checks/cluster_rings.yml    
 
       tags: ["cluster_rings"]
-    
-    - name: Make sure cluster epsilon is at first node 
-      block: 
 
-      - name: For larger clusters, find epsilon (`cluster show -fields epsilon`)
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'cluster'
-          params: 
-            fields: "epsilon"
-          verb: "GET"
-        register: cluster_epsilon
+    # Not sure this is neccessary     
+    # - name: Make sure cluster epsilon is at last node 
+    #   block: 
 
-      - name: Log of cluster_epsilon
-        include_tasks: tasks/add_log.yml
-        vars: 
-          log: 
-            cluster_epsilon: "{{ cluster_epsilon }}"
-
-      - name: Set first_node and epsilon_node facts 
-        ansible.builtin.set_fact:
-          first_node: "{{ cluster_epsilon.msg.records | first }}"
-          epsilon_node: "{{ cluster_epsilon.msg.records |selectattr('epsilon','true') | first | default(omit) }}"
-
-      - name: Set epsilon to false, if not on first node (`cluster modify -node <epsilonnode> -epsilon false`)     
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'cluster'
-          body: 
-            epsilon: false 
-          params: 
-            node: "{{ epsilon_node.node }}"  
-          verb: "PATCH"
-        register: move_cluster_epsilon
-        # Catch edge case where epsilon is not true for any node
-        when: first_node.epsilon == false and epsilon_node is defined 
-
-      - name: Set epsilon to true on first node (`cluster modify -node <firstnode> -epsilon true`)     
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'cluster'
-          body: 
-            epsilon: true 
-          params: 
-            node: "{{ first_node.node }}"
-          verb: "PATCH"
-        register: move_cluster_epsilon
-        when: first_node.epsilon == false
-
-      - name: Log of move_cluster_epsilon
-        include_tasks: tasks/add_log.yml
-        vars: 
-          log: 
-            cluster_epsilon_move: "{{ move_cluster_epsilon }}"
-        when: first_node.epsilon == false
-
-      - name: Confirm epsilon is at first node (`cluster show -fields epsilon`)
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'cluster'
-          params: 
-            fields: "epsilon"
-          verb: "GET"
-        register: cluster_epsilon_confirm
-
-      - name: Log of cluster_epsilon_confirm
-        include_tasks: tasks/add_log.yml
-        vars: 
-          log: 
-            cluster_epsilon_confirm: "{{ cluster_epsilon_confirm }}"
-
-      - name: Fail playbook if epsilon is not at first node
-        include_tasks: tasks/add_failure.yml
-        vars:
-          failure: 
-            issue: "{{ first_node.node }} should be epsilon, but currently {{ epsilon_node.node | default('no node') }} is set as epsilon"
-            details: "{{ cluster_epsilon_confirm }}"
-        when: cluster_epsilon_confirm.msg.records.0.epsilon == false
+    #   - include_tasks: tasks/health_checks/move_epsilon.yml    
       
-      when: cluster_node_count | int > 2
-      tags: ["epsilon"]
+    #   when: cluster_node_count | int > 2
+    #   tags: ["epsilon"]
     
-    - name: Check SAN configuration, if applicable
+    - name: Check SAN configuration
       block: 
 
       - include_tasks: tasks/health_checks/san.yml    
 
-      - name: Verify SAN host configuration before proceeding
-        include_tasks: tasks/add_warning.yml
-        vars: 
-          warning: 
-            issue: "Verify SAN configuration. Validate server side is set for redundancy."
-            details: 
-              iscsi: "{{ verify_iscsi.msg.records }}"
-              fcp: "{{ verify_fcp.msg.records }}"
-      
-      when: san_igroups_count | int > 0
       tags: ["san"] 
 
     - name: Check SnapMirrors and SnapShot count
@@ -191,7 +99,7 @@
             issue: "**Destination cluster must be upgraded prior 
                     to upgrading source cluster for DP SnampMirrors** 
                     See https://docs.netapp.com/us-en/ontap/upgrade/task_preparing_snapmirror_relationships_for_a_nondisruptive_upgrade_or_downgrade.html"
-            details: "{{ verify_snapmirror_dp_destinations }}"
+            details: "{{ verify_snapmirror_dp_destinations.msg.records | dicts_to_table }}"
         when: verify_snapmirror_dp_destinations.msg.num_records > 0
 
       tags: ["dp_snapmirror"]
@@ -206,10 +114,10 @@
         vars: 
           failure: 
             issue: "Each node must not exceed 20,000 snapshot copies"
-            details: "{{ verify_snapshot_count.msg.num_records }}"
+            details: "{{ verify_snapshot_count.msg.num_records }} snapshot copies"
         when: verify_snapshot_count.msg.num_records > 20000
 
-      tags: ["snapshots"]
+      tags: ["snapshot_count"]
 
     - name: Check for bad disks
       block:
@@ -218,94 +126,15 @@
 
       tags: ["disks"]
 
-    - name: Check for inconsistent volumes
+    - name: Check for inconsistent volumes and validate deduplicated volumes 
       block: 
-      - name: Check for inconsistent volumes (`volume show -is-inconsistent true`)
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'volume'
-          params: 
-            is-inconsistent: "true"
-          verb: "GET"
-        register: check_for_inconsistent_volumes
-
-      - name: Fail playbook if there are any inconsistent volumes
-        include_tasks: tasks/add_failure.yml
-        vars: 
-          failure: 
-            issue: "There cannot be any inconsistent volumes"
-            records: "{{ check_for_inconsistent_volumes.msg.records }}"
-        when: check_for_inconsistent_volumes.msg.num_records > 0
-        
-      tags: ["inconsistent_volumes"]
-
-
-    - name: Validate deduplicated volumes 
-      block: 
-      - name: List any deduplicated volumes over 96% 
-              (`volume show -is-sis-volume true -percent-used >96 -fields aggregate,percent-used`)
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'volume'
-          params: 
-            is-sis-volume: "true"
-            percent-used: ">96"
-            fields: "aggregate,percent-used"
-          verb: "GET"
-        register: verify_large_dedupe_volumes
-
-      - name: Log of verify_large_dedupe_volumes
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["dedupe_volumes"]
-        vars: 
-          log: 
-            large_dedupe_volumes: "{{ verify_large_dedupe_volumes }}"
-          
-      - block: 
-        - name: If verify_large_dedupe_volumes isn't empty, gather list of aggrs involved 
-          ansible.builtin.set_fact: 
-            large_dedupe_volumes_aggrs: "{{ verify_large_dedupe_volumes.msg.records | map('aggregate') | list }}"
-          
-        - name: Log of large_dedupe_volumes_aggrs
-          include_tasks: tasks/add_log.yml
-          args: 
-            apply:
-              tags: ["dedupe_volumes"]
-          vars: 
-            log: 
-              large_dedupe_volumes_aggrs: "{{ large_dedupe_volumes_aggrs }}"
-
-        - name: Check aggr containing deduplicated volumes (`df -A <aggr>,<aggr2>`)
-          netapp.ontap.na_ontap_ssh_command:
-            command: "df -A {{ large_dedupe_volumes_aggrs | join(',') }}"
-            privilege: adv
-            accept_unknown_host_keys: true
-          register: verify_large_dedupe_volumes_aggrs
-
-        - name: Log of verify_large_dedupe_volumes_aggrs
-          include_tasks: tasks/add_log.yml
-          args: 
-            apply:
-              tags: ["dedupe_volumes"]
-          vars: 
-            log: 
-              verify_large_dedupe_volumes_aggrs: "{{ verify_large_dedupe_volumes_aggrs }}"
-
-        - name: Fail playbook if any aggregates containing dedupe volumes are over 97% 
-          include_tasks: tasks/add_failure.yml
-          args:
-            apply:
-              tags: ["dedupe_volumes"]
-          vars: 
-            failure: 
-              issue: "Aggrs containing deduplicated volumes must not exceed 97% used capacity"
-              details: "{{ verify_large_dedupe_volumes_aggrs['stdout'] }}"
-          when: verify_large_dedupe_volumes_aggrs['stdout'] | regex_findall('([9][7-9]|[1-9]\\d{2,})(?=\\%)', multiline=True) | length > 0
-
-        when: verify_large_dedupe_volumes.msg.num_records > 0
       
-      tags: ["dedupe_volumes"]
+      - include_tasks: tasks/health_checks/inconsistent_volumes.yml
 
+      - include_tasks: tasks/health_checks/dedupe_volumes.yml      
+
+      tags: ["volumes"]
+            
     - name: Check date and time 
       block: 
 
@@ -319,283 +148,78 @@
         vars: 
           online_object_check: "{{ item }}"
         loop: "{{ check_for_not_online }}" 
-
       tags: ["not_online"]
 
     - name: Check networking 
       block: 
-      - name: Check for cluster DNS not being up
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'dns/check'
-          params: 
-            status: "!up"
-            vserver: "{{ cluster_info.name }}" 
-          verb: "GET"
-        register: verify_dns_status
 
-      - name: Fail playbook if any cluster DNS status is not up
-        include_tasks: tasks/add_failure.yml
-        vars: 
-          failure: 
-            issue: "All cluster DNS nameservers must be up"
-            records: "{{ verify_dns_status }}"
-        when: verify_dns_status.msg.num_records > 0
-
-      - name: Check to make sure status-oper and status-admin are up 
-              (`net int show -vserver * status-oper !up status-admin !up -fields status-oper,status-admin`)
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'network/interface'
-          params: 
-            status-oper: "!up"
-            status-admin: "!up"
-            fields: "status-oper,status-admin"
-          verb: "GET"
-        register: verify_net_int_status_oper_admin
-
-      - name: Fail playbook if any status-oper or status-admin LIFs are not up
-        include_tasks: tasks/add_failure.yml
-        vars: 
-          failure: 
-            issue: "status-oper and status-admin must be up on all LIFss"
-            records: "{{ verify_net_int_status_oper_admin.msg.records }}"
-        when: verify_net_int_status_oper_admin.msg.num_records > 0
-
-      # TODO - this feels janky and I think I should be able to do this without a loop
-      - name: Check for any LIFs not being home
-        ansible.builtin.set_fact: 
-          net_int_not_home: "{{ net_int_not_home | default([]) + [item] }}"
-        loop: "{{ net_int }}"
-        loop_control:
-          label: "{{ item.name }}"
-        when: item.location.is_home == False
-
-      - block:
-        - name: Log of LIFs not home
-          include_tasks: tasks/add_log.yml
-          args: 
-            apply:
-              tags: ["networking"]
-          vars: 
-            log: 
-              net_int_not_home: "{{ net_int_not_home }}"
-
-        - name: All LIFs should be homed prior to upgrades
-          netapp.ontap.na_ontap_rest_cli:
-            command: "network/interface/revert"
-            params: 
-              "vserver": "*"
-            verb: "PATCH"
-          register: verify_net_int_revert
-
-        - name: Log of verify_net_int_revert
-          include_tasks: tasks/add_log.yml
-          args: 
-            apply:
-              tags: ["networking"]
-          vars: 
-            log:  
-              net_int_revert: "{{ verify_net_int_revert }}"
-        
-        - name: Check to make sure everything got home (net int show -is-home false)
-          netapp.ontap.na_ontap_rest_cli: 
-            command: 'network/interface'
-            params: 
-              is-home: "false"
-            verb: "GET"
-          register: verify_all_lifs_home
-
-        - name: Log of verify_all_lifs_home
-          include_tasks: tasks/add_log.yml
-          args: 
-            apply:
-              tags: ["networking"]
-          vars: 
-            log: 
-              all_lifs_home: "{{ verify_all_lifs_home }}"
-
-        - name: Fail playbook if not all LIFs are home 
-          include_tasks: tasks/add_failure.yml
-          args:
-            apply:
-              tags: ["networking"]
-          vars: 
-            failure: 
-              issue: "All LIFs must be home"
-              details: "{{ verify_all_lifs_home.msg.records }}"
-          when: verify_all_lifs_home.msg.num_records > 0
-
-        when: net_int_not_home is defined
-
-      - name: Get ethernet ports that are UP    
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'network/port'
-          params: 
-            link: "up"
-            fields: "node,mtu,ifgrp-port,health-status,link,broadcast-domain,type"
-          verb: "GET"
-        register: verify_ports
-
-      - name: Log of verify_ports
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["networking"]
-        vars: 
-          log: 
-            ports: "{{ verify_ports }}"
-
-      - name: Find any unhealthy ports and/or ports without a broadcast domain
-        ansible.builtin.set_fact: 
-          verify_ports_unhealthy: "{{ verify_ports.msg.records | selectattr('broadcast_domain', 'undefined') | 
-                                      selectattr('health_status','!=','healthy') | list }}"
-
-      - name: Fail playbook for any unhealthy ports and/or ports without a broadcast domain
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["networking"]
-        vars: 
-          failure: 
-            issue: "All up link ports must be healthy and be in a broadcast domain"
-            details: "{{ verify_ports_unhealthy }}"
-        when: verify_ports_unhealthy | length > 0 
-
-      - name: Get failover groups (`net int failover-groups show`)
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'network/interface/failover-groups'
-          params: 
-            fields: "vserver,targets,failover-group"
-          verb: "GET"
-        register: verify_failover_groups
-      
-      - name: Log of verify_failover_groups
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["networking"]
-        vars: 
-          log: 
-            failover_groups: "{{ verify_failover_groups }}"
-
-      - name: Find any invalid failover groups domains
-        ansible.builtin.set_fact: 
-          invalid_failover_groups: "{{ verify_failover_groups.msg.records | ontap_find_invalid_failover_groups(cluster_nodes) }}"
-
-      - name: Fail playbook if, for each failover group, a) There isn't at least 1 port from each node 
-                b) The vlan tags do not match
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["networking"]
-        vars: 
-          failure: 
-            issue: "Each failover group must have at least 1 port from each node ({{ cluster_nodes | map(attribute='name') | join(',') }}) and the vlan tags must 
-                      match"
-            details: "{{ invalid_failover_groups }}"
-        when: invalid_failover_groups | length > 0
-
-      - name: Get broadcast domains (`broadcast-domain show`)  
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'network/port/broadcast-domain'
-          params: 
-            fields: "broadcast-domain,ports,mtu,ipspace,failover-groups"
-          verb: "GET"
-        register: verify_broadcast_domains
-
-      - name: Log of verify_broadcast_domains
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["networking"]
-        vars: 
-          log: 
-            broadcast_domains: "{{ verify_broadcast_domains }}"
-
-      - name: Find any invalid broadcast domains
-        ansible.builtin.set_fact: 
-          invalid_broadcast_domains: "{{ verify_broadcast_domains.msg.records | ontap_find_invalid_broadcast_domains(cluster_nodes) }}"
-
-      - name: Fail playbook if, for each broadcast domain, a) There isn't at least 1 port from each node 
-                b) The vlan tags do not match
-        include_tasks: tasks/add_failure.yml
-        args:
-          apply:
-            tags: ["networking"]
-        vars: 
-          failure: 
-            issue: "Each broadcast domain must have at least 1 port from each node ({{ cluster_nodes | map(attribute='name') | join(',') }}) and the vlan tags must 
-                      match"
-            details: "{{ invalid_broadcast_domains }}"
-        when: invalid_broadcast_domains | length > 0
-      
+      - include_tasks: tasks/health_checks/networking.yml    
+     
       tags: ["networking"]  
 
-    - name: Check what jobs are running 
+    - name: Check what jobs are running (pre-upgrade only)
       block:
-      - name: Get running jobs 
-        netapp.ontap.na_ontap_rest_cli: 
-          command: 'job'
-          params: 
-            fields: "name,id,node,state,vserver"
-            state: "running"  
-          verb: "GET"
-        register: verify_running_jobs
-      
-      - name: Log of verify_running_jobs
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["jobs"]
-        vars: 
-          log: 
-            running_jobs: "{{ verify_running_jobs }}"
+
+
+      - include_tasks: tasks/health_checks/running_jobs.yml    
 
       - name: Fail playbook if any jobs are running besides {{ allowed_jobs | join(',') }}
         include_tasks: tasks/add_failure.yml  
-        args:
-          apply:
-            tags: ["jobs"]
         vars: 
           failure: 
             issue: "No jobs should be running"
-            details: "{{ verify_running_jobs.msg.records }}"
+            details: "{{ verify_running_jobs.msg.records | dicts_to_table }}"
         when: verify_running_jobs.msg.num_records > 0 
                 and 
               verify_running_jobs.msg.records | map(attribute='name') | difference(allowed_jobs) | length > 0
 
       tags: ["jobs"]
-
-    - block: 
-      - name: Ensure HA is enabled for two node clusters
-        netapp.ontap.na_ontap_cluster_ha:
-          state: present
-        register: enable_ha
-
-      - name: Log of enable_ha
-        include_tasks: tasks/add_log.yml
-        args: 
-          apply:
-            tags: ["jobs"]
-        vars: 
-          log: 
-            enable_ha: "{{ enable_ha }}"
-      when: cluster_node_count | int == 2 
+      when: post_upgrade_check != True
 
     - name: Summary of health checks 
       block: 
 
-      - name: Get uptime and current ONTAP Version
-        include_tasks: tasks/health_checks/uptime_and_os_version.yml
+      - include_tasks: tasks/health_checks/ensure_ha.yml    
+        when: cluster_node_count | int == 2 
+
+      - name: Show HA (`cluster ha show`) 
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'cluster/ha'
+          verb: "GET"
+        register: verify_ha
+
+      - name: Get uptime (`system node show -fields uptime`) 
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'system/node'
+          params: 
+            fields: "model,uptime"
+          verb: "GET"
+        register: verify_uptime
+
+      - name: Get current ONTAP Version (`system image show -iscurrent true -fields image,node,version`)
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'system/image'
+          params: 
+            iscurrent: "true"
+            fields: "image,node,version"
+          verb: "GET"
+        register: verify_ontap_version
+
+      - name: Set uptime_and_os
+        ansible.builtin.set_fact: 
+          uptime_and_os: "{{ verify_ontap_version.msg.records 
+                            | community.general.lists_mergeby(verify_uptime.msg.records, 'node') }}"
 
       - name: Show uptime and current ONTAP Version
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
-            uptime_and_os: "{{ uptime_and_os }}"
-
+            cluster ha show: "{{ verify_ha.msg }}"
+            Current Uptime and OS: "{{ uptime_and_os | dicts_to_table }}"
+      
       - name: Show summary_logs
         ansible.builtin.debug: 
-          var: summary_logs 
+          var: summary_logs
           
       - name: Show summary_warnings
         ansible.builtin.fail: 

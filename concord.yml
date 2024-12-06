@@ -67,7 +67,7 @@ flows:
         dockerImage: ${docker_image}
         configFile: ${ansible_config}
         inventoryFile: ${ansible_inventory}
-        playbook: ansible/health_checks.yml
+        playbook: ansible/ontap_upgrade_health_checks.yml
         extraVars:
           clusters: ${upgrade_clusters} 
           ontap_creds: ${ontap_creds}
@@ -185,7 +185,7 @@ flows:
         dockerImage: ${docker_image}
         configFile: ${ansible_config}
         inventoryFile: ${ansible_inventory}
-        playbook: ansible/post_upgrade.yml
+        playbook: ansible/ontap_upgrade_post_upgrade.yml
         extraVars:
           clusters: ${upgrade_clusters} 
           ontap_creds: ${ontap_creds}
@@ -294,7 +294,7 @@ flows:
         dockerImage: ${docker_image}
         configFile: ${ansible_config}
         inventoryFile: ${ansible_inventory}
-        playbook: ansible/takeover_giveback.yml
+        playbook: ansible/ontap_upgrade_takeover_giveback.yml
         extraVars:
           nodes: ${nodes_list}
           clusters: ${upgrade_clusters} 
@@ -348,7 +348,7 @@ flows:
         dockerImage: ${docker_image}
         configFile: ${ansible_config}
         inventoryFile: ${ansible_inventory}
-        playbook: ansible/pre_upgrade.yml
+        playbook: ansible/ontap_upgrade_pre_upgrade.yml
         extraVars:
           clusters: ${ontap_clusters} 
           ontap_creds: ${ontap_creds}
@@ -369,7 +369,7 @@ flows:
         dockerImage: ${docker_image}
         configFile: ${ansible_config}
         inventoryFile: ${ansible_inventory}
-        playbook: ansible/health_checks.yml
+        playbook: ansible/ontap_upgrade_health_checks.yml
         extraVars:
           clusters: ${ontap_clusters} 
           ontap_creds: ${ontap_creds}

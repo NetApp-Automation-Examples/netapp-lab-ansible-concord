@@ -36,28 +36,7 @@
         nodes_list: "{{ ontap_rest_info['cluster/nodes']['records'] | map(attribute='name') }}"
     tags: always
 
-  - name: Check that http server is working correctly
-    block: 
-    - name: Log of target ONTAP Package download URL and version
-      debug: 
-        msg: "{{ ontap_package_version }} - {{ ontap_package_url }}"
-      run_once: true
-
-    - name: Ping download URL 
-      uri: 
-        url: "{{ ontap_package_url }}"
-        method: HEAD
-        return_content: no
-      register: ontap_package_url_head
-      run_once: true
-
-    - name: Fail playbook if ontap package can't be reached 
-      ansible.builtin.fail: 
-        msg: "{{ ontap_package_url }} is not reachable. See: {{ ontap_package_url_head }}"
-      when: ontap_package_url_head.status != 200
-      run_once: true
-    
-    when: ontap_package_url 
+  - include_tasks: tasks/check_package_url.yml
     tags: ["image", "upload_check"]
 
   - name: Kick off autosupports 
