@@ -1,0 +1,55 @@
+---
+- name: "Determine where in the upgrade process each cluster is"
+  hosts: "{{ clusters | default('localhost') }}"
+  gather_facts: no
+  connection: 'local'
+  collections:
+    - netapp.ontap
+  module_defaults:
+    group/netapp.ontap.netapp_ontap:
+      hostname: "{{ ontap_hostname }}"
+      username: "{{ ontap_username }}"
+      password: "{{ ontap_password }}"
+      https: "{{ https }}"
+      validate_certs: "{{ validate_certs }}"
+  vars_files: 
+    - http_server.yml
+  vars: 
+    ontap_image: 9101P15_q_image.tgz
+    ontap_package_version: 9.10.1P15
+    ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
+  tasks:
+  - name: Get failover status (`storage failover show`)  
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'storage/failover'
+      params: 
+        fields: "node,partner-name,partner-reason,enabled,possible,state-description"
+      verb: "GET"
+    register: get_failover_status
+
+  - name: Set failover_status
+    ansible.builtin.set_fact: 
+      failover_status: get_failover_status['msg']['records'] 
+
+  - name: debug
+    ansible.builtin.debug: 
+      var: "{{ failover_status }}"
+
+  - name: Get versions currently on each node (`netapp.ontap.na_ontap_rest_info`)
+    include_tasks: tasks/rest_info.yml
+    vars: 
+      gather_subset:
+      - cluster/nodes
+      fields: 
+        - "ha,state,version"
+
+  - name: debug
+    ansible.builtin.debug: 
+      var: ontap_rest_info['cluster/nodes']['records']
+
+  # - name: Get package list 
+  #   netapp.ontap.na_ontap_rest_cli
+  - name: debug
+    debug: 
+      var: ontap_package_url
+  - include_tasks: tasks/check_package_url.yml
