@@ -18,7 +18,11 @@
     ontap_image: 9101P15_q_image.tgz
     ontap_package_version: 9.10.1P15
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
+    upgrade_status: not_started
+  pre_tasks: 
+  - include_tasks: tasks/check_package_url.yml
   tasks:
+
   - name: Get failover status (`storage failover show`)  
     netapp.ontap.na_ontap_rest_cli: 
       command: 'storage/failover'
@@ -31,10 +35,6 @@
     ansible.builtin.set_fact: 
       failover_status: get_failover_status['msg']['records'] 
 
-  - name: debug
-    ansible.builtin.debug: 
-      var: "{{ failover_status }}"
-
   - name: Get versions currently on each node (`netapp.ontap.na_ontap_rest_info`)
     include_tasks: tasks/rest_info.yml
     vars: 
@@ -43,13 +43,19 @@
       fields: 
         - "ha,state,version"
 
-  - name: debug
-    ansible.builtin.debug: 
-      var: ontap_rest_info['cluster/nodes']['records']
+  - name: Check for 'MAINT=<n>h Starting' autosupports within the last 4 hours
+    netapp.ontap.na_ontap_rest_cli: 
+      command: 'system/node/autosupport/history'
+      params: 
+        fields: "subject,trigger,error,last-update,status"
+        subject: "*ALL:MAINT=*h Starting*"
+        last-update: ">120m"
+      verb: "GET"
+    register: get_maint_autosupports
 
-  # - name: Get package list 
+  - name: Set maint_autosupports
+    ansible.builtin.set_fact: 
+      maint_autosupports: "{{ get_maint_autosupports['msg']['records'] }}"
+
+      # - name: Get package list 
   #   netapp.ontap.na_ontap_rest_cli
-  - name: debug
-    debug: 
-      var: ontap_package_url
-  - include_tasks: tasks/check_package_url.yml

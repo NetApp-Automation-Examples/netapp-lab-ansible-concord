@@ -1,12 +1,8 @@
-- name: Debug
-  debug: 
-    var: ontap_package_url
 - name: Check that http server is working correctly
   block: 
   - name: Log of target ONTAP Package download URL and version
     debug: 
       msg: "{{ ontap_package_version }} - {{ ontap_package_url }}"
-    run_once: true
 
   - name: Ping download URL 
     uri: 
@@ -22,4 +18,6 @@
     when: ontap_package_url_head.status != 200
     run_once: true
   
-  when: ontap_package_url is defined and ontap_package_url.length > 0 
+  when: ontap_package_url is defined and ontap_package_url | length > 0 
+  run_once: true
+
