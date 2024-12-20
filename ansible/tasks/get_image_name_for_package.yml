@@ -1,0 +1,12 @@
+- name: Get image name for {{ ontap_package_version }}
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'system/node/image'
+    params: 
+      fields: "image"
+      version: "{{ ontap_package_version }}"
+    verb: "GET"
+  register: node_image_new_package
+
+- name: Set new_image_name
+  ansible.builtin.set_fact: 
+    new_image_name: "{{ (node_image_new_package.msg.records | first).image }}"

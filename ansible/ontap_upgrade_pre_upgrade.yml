@@ -105,30 +105,7 @@
        
   - name: Get the image into each node's package repo
     block:
-    - name: |
-        Check to see if the package has already been uploaded
-        (`system node image show`)
-      netapp.ontap.na_ontap_rest_cli: 
-        command: 'system/node/image'
-        params: 
-          fields: "image,node,version"
-        verb: "GET"
-      register: node_image_show
-
-    - name: Set current_node_images
-      ansible.builtin.set_fact: 
-        current_node_images: "{{ node_image_show.msg.records }}"
-
-    - name: Build list of versions per node
-      ansible.builtin.set_fact: 
-        nodes_with_new_package: "{{ current_node_images | selectattr('version', 'equalto', ontap_package_version) }}" 
-
-    - name: "Build list of nodes without {{ ontap_package_version }}"
-      ansible.builtin.set_fact: 
-        nodes_need_new_image: "{{ nodes_need_new_image | default([]) + [item] }}"
-      loop: "{{ nodes_list }}"
-      when: item not in nodes_with_new_package | map(attribute="node")
-
+    - include_tasks: tasks/check_node_images.yml
     - block: 
       - name: log of nodes_need_new_image
         ansible.builtin.debug:
@@ -205,18 +182,8 @@
 
   - name: Set node images to {{ ontap_package_version }}
     block: 
-    - name: Get image name for {{ ontap_package_version }}
-      netapp.ontap.na_ontap_rest_cli: 
-        command: 'system/node/image'
-        params: 
-          fields: "image"
-          version: "{{ ontap_package_version }}"
-        verb: "GET"
-      register: node_image_new_package
 
-    - name: Set new_image_name
-      ansible.builtin.set_fact: 
-        new_image_name: "{{ (node_image_new_package.msg.records | first).image }}"
+    - include_tasks: tasks/get_image_name_for_package.yml 
 
     - name: system image modify -node * -image {{ new_image_name }} -isdefault true
       netapp.ontap.na_ontap_rest_cli: 
