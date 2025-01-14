@@ -18,7 +18,7 @@
     ontap_image: 9101P15_q_image.tgz
     ontap_package_version: 9.10.1P15
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
-    upgrade_status: ""
+    upgrade_status: "undetermined"
   pre_tasks: 
   - include_tasks: tasks/check_package_url.yml
   tasks:
@@ -64,8 +64,6 @@
 
   - include_tasks: tasks/check_node_images.yml
 
-  # nodes_need_new_image
-
   - name: Check for 'MAINT=<n>h Starting' autosupports within the last 4 hours
     netapp.ontap.na_ontap_rest_cli: 
       command: 'system/node/autosupport/history'
@@ -89,24 +87,30 @@
           and current_ontap_version | ontap_version != ontap_package_version
           and nodes_list | map(attribute='version') | unique | length == 1
   
-  - name: Set upgrade_status to in_pre_upgrade if pre-upgrade steps have started but not completed
+  - name: Set upgrade_status to in_pre_upgrade if some or all pre-upgrade tasks are completed, 
+          but failover status is normal, and all nodes still need new version
     ansible.builtin.set_fact: 
       upgrade_status: "in_pre_upgrade"
-    when: failover_status | selectattr('auto_giveback', 'false') | list | length > 0 
+    when: failover_status | selectattr('auto_giveback', 'false') | list | length ==  failover_status | list
           and failover_status | selectattr('possible','true') | list | length == failover_status | length
           and current_ontap_version | ontap_version != ontap_package_version
           and nodes_list | map(attribute='version') | unique | length == 1
+
+  - name: Set upgrade_status to upgrade_in_progress if failover status / node images are in a mixed state
+    ansible.builtin.set_fact:
+      upgrade_status: "upgrade_in_progress"
+    when: failover_status | selectattr('auto_giveback', 'false') | list | length > 0 
+          and current_ontap_version | ontap_version != ontap_package_version
           and (
-            nodes_need_new_image | length != nodes_list | length 
+            nodes_need_new_image | length > 0 
             or recent_maint_autosupports | length > 0
           )
 
-  - name: Set upgrade_status to upgrade_in_progress if pre-upgrade tasks are finished but the cluster is not yet at target version
+  - name: Set upgrade_status to completed if current ontap version == {{ ontap_package_version }} and failover status normal 
     ansible.builtin.set_fact:
-      upgrade_status: "upgrade_in_progress"
-    when: failover_status | selectattr('auto_giveback', 'false') | list | length == failover_status | length 
-          and nodes_need_new_image | length == 0 
-          and current_ontap_version | ontap_version != ontap_package_version
+      upgrade_status: "completed"
+    when: failover_status | selectattr('possible','true') | selectattr('enabled','true') | selectattr('auto_giveback','true') | list | length == failover_status | length 
+          and current_ontap_version | ontap_version == ontap_package_version 
 
   - name: Debug upgrade_status
     ansible.builtin.debug: 

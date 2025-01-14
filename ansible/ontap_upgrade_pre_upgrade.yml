@@ -28,6 +28,8 @@
       vars: 
         gather_subset: 
           - cluster/nodes
+        fields: 
+          - "ha,state,version"
 
     - name: Set nodes_list and nodes_info 
       ansible.builtin.set_fact:
@@ -106,6 +108,8 @@
   - name: Get the image into each node's package repo
     block:
     - include_tasks: tasks/check_node_images.yml
+      vars: 
+        nodes_list: "{{ nodes_info }}"
     - block: 
       - name: log of nodes_need_new_image
         ansible.builtin.debug:
@@ -118,7 +122,7 @@
         netapp.ontap.na_ontap_rest_cli: 
           command: 'system/node/image/show-update-progress'
           body: 
-            node: "{{ item }}"
+            node: "{{ item.name }}"
           verb: "POST"
         register: check_if_node_image_upload_in_progress
         loop: "{{ nodes_need_new_image }}"
@@ -138,7 +142,7 @@
         netapp.ontap.na_ontap_rest_cli: 
           command: 'system/node/image/update'
           params: 
-            node: "{{ item }}"
+            node: "{{ item.name }}"
           body:   
             package: "{{ ontap_package_url }}"
             replace-package: true
