@@ -20,4 +20,6 @@
   ansible.builtin.set_fact: 
     nodes_need_new_image: "{{ nodes_need_new_image | default([]) + [item] }}"
   loop: "{{ nodes_list }}"
+  loop_control: 
+    label: "{{ item.name }} {{ item.version.full }}"
   when: item not in nodes_with_new_package | map(attribute="node")
