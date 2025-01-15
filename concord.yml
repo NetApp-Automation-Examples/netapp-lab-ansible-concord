@@ -61,6 +61,7 @@ flows:
     - set:
         upgrade_clusters: "lab_ontap"
         upgrade_image_url: "http://192.168.0.5:8080/9111P1_q_image.tgz"
+        upgrade_image: 9.11.1P1
     - task: ansible
       in:
         dockerImage: ${docker_image}
@@ -70,6 +71,8 @@ flows:
         extraVars:
           clusters: ${upgrade_clusters} 
           ontap_creds: ${ontap_creds}
+          ontap_image: ${upgrade_image}
+          ontap_package_url: ${upgrade_image_url}
         outVars:
           - upgrade_status
       out: upgrade_status
