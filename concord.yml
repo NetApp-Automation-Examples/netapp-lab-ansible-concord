@@ -71,10 +71,10 @@ flows:
         inventoryFile: ${ansible_inventory}
         playbook: ansible/ontap_upgrade_status_check.yml
         extraVars:
-          clusters: ${upgrade_clusters} 
+          clusters: ${status_check_form.clusters} 
           ontap_creds: ${ontap_creds}
-          ontap_image: ${upgrade_image}
-          ontap_package_url: ${upgrade_image_url}
+          ontap_image: ${status_check_form.package_version}
+          ontap_package_url: ${status_check_form.image_url}
         outVars:
           - upgrade_status
       out: upgrade_status
