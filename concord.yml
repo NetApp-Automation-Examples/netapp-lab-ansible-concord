@@ -53,29 +53,27 @@ forms:
     
 flows:
   dev: 
+    # - set:
+    #     test: "UPPERCASE.domain.com"
+    # - log: ${test}
+    # - log: ${test.toLowerCase()}
+    # - exit
     - set:
-        test: "UPPERCASE.domain.com"
-    - log: ${test}
-    - log: ${test.toLowerCase()}
-    - exit
-
-    - set:
-        upgrade_clusters: "cluster1"
-        upgrade_image_url: "http://dummy.url"
+        upgrade_clusters: "lab_ontap"
+        upgrade_image_url: "http://192.168.0.5:8080/9111P1_q_image.tgz"
     - task: ansible
       in:
         dockerImage: ${docker_image}
         configFile: ${ansible_config}
         inventoryFile: ${ansible_inventory}
-        playbook: ansible/ontap_upgrade_health_checks.yml
+        playbook: ansible/ontap_upgrade_status_check.yml
         extraVars:
           clusters: ${upgrade_clusters} 
           ontap_creds: ${ontap_creds}
         outVars:
-          - summary_logs
-      out: test_logs
-    - log: ${test_logs}
-    - log: ${resource.writeAsYaml(test_logs)} 
+          - upgrade_status
+      out: upgrade_status
+    - log: ${upgrade_status}
 
   main:  
     - form: health_checks_form
