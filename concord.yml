@@ -61,9 +61,10 @@ flows:
     # - log: ${test.toLowerCase()}
     # - exit
     - set:
-        upgrade_clusters: "lab_ontap"
-        upgrade_image_url: "http://192.168.0.5:8080/9111P1_q_image.tgz"
-        upgrade_image: 9.11.1P1
+        status_check_form:
+          clusters: "lab_ontap"
+          image_url: "http://192.168.0.5:8080/9111P1_q_image.tgz"
+          package_version: 9.11.1P1
     - task: ansible
       in:
         dockerImage: ${docker_image}
@@ -89,10 +90,10 @@ flows:
         inventoryFile: ${ansible_inventory}
         playbook: ansible/ontap_upgrade_status_check.yml
         extraVars:
-          clusters: ${upgrade_clusters} 
+          clusters: ${status_check_form.clusters} 
           ontap_creds: ${ontap_creds}
-          ontap_image: ${upgrade_image}
-          ontap_package_url: ${upgrade_image_url}
+          ontap_image: ${status_check_form.package_version}
+          ontap_package_url: ${status_check_form.image_url}
         outVars:
           - upgrade_status
       out: upgrade_status
