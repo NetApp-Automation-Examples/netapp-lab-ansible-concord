@@ -46,9 +46,11 @@ forms:
   - reviewed: {label: "Takeover/giveback logs have been reviewed? Note that process will end if you do not confirm this.", type: "boolean"}
   - override_vetoes: {label: "Pass in '-override-vetoes true' to the next run of the takeover/giveback playbook?", type: "boolean"}
   - end_process: {label: "End proccess now?", type: "boolean"}
-  health_checks_form: 
+  status_check_form: 
   - clusters:  { label: "Cluster(s)", type: "string+", readonly: false, allow: "${cluster_choices}"}
-  - skip_first_health_check: { label: "Skip initial health check?", type: "boolean"}
+  - image_url: { label: "ONTAP Image URL", type: "string?" }
+  - package_version: { label: "Target ONTAP Package version, i.e. 9.10.1P15",  type: "string", allow: "${ontap_package_versions}"}
+
   #- simulate_failure: { label: "Simulate failure?", type: "boolean" }
     
 flows:
@@ -79,11 +81,23 @@ flows:
     - log: ${upgrade_status}
 
   main:  
-    - form: health_checks_form
-    - if: ${health_checks_form.clusters == ['clab1']}
-      then: 
-      - set: 
-          ontap_creds: ${crypto.exportCredentials('Default', 'OntapCredsClab', null)}
+    - form: status_check_form
+    - task: ansible
+      in:
+        dockerImage: ${docker_image}
+        configFile: ${ansible_config}
+        inventoryFile: ${ansible_inventory}
+        playbook: ansible/ontap_upgrade_status_check.yml
+        extraVars:
+          clusters: ${upgrade_clusters} 
+          ontap_creds: ${ontap_creds}
+          ontap_image: ${upgrade_image}
+          ontap_package_url: ${upgrade_image_url}
+        outVars:
+          - upgrade_status
+      out: upgrade_status
+    - log: ${upgrade_status}
+    - exit
     - if: ${health_checks_form.skip_first_health_check == false}
       then:
       - call: health_checks 
@@ -98,8 +112,6 @@ flows:
           label: "Cluster(s) that passed health checks", type: "string+", readonly: false, 
           allow: "${health_checks_form.clusters}", value: "${health_checks_form.clusters}"
         }
-      - image_url: { label: "ONTAP Image URL", type: "string?" }
-      - package_version: { label: "Target ONTAP Package version, i.e. 9.10.1P15",  type: "string", allow: "${ontap_package_versions}"}
       - skip_pre_upgrade_steps: { label: "Skip pre-upgrade steps? (image upload, autosupport, etc)", type: "boolean"}
 
     - set:
