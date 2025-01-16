@@ -39,7 +39,7 @@
       - name: Skip playbook if upgrade_status is anything but 'not_started'
         meta: end_host
         when: upgrade_status[inventory_hostname] != 'not_started'
-      when: not post_upgrade_check
+      when: post_upgrade_check|bool == false 
   tasks:
 
     - name: Get cluster info
