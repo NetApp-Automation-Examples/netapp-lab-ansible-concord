@@ -239,6 +239,7 @@ flows:
         - throw: "Something happened ${lastError}"
 
   health_checks:
+    - log: "Check upgrade_status variable: ${upgrade_status}"s
     - call: health_checks_playbook
       in: 
         ontap_clusters: ${health_checks_clusters}
@@ -372,6 +373,7 @@ flows:
 
 
   health_checks_playbook:
+    - log: "upgrade_status = ${upgrade_status}"
     - log: "health_checks_failed value = ${health_checks_failed}"
     - if: ${health_checks_failed == true}
       then:
@@ -386,6 +388,7 @@ flows:
           clusters: ${ontap_clusters} 
           ontap_creds: ${ontap_creds}
           post_upgrade_check: ${post_upgrade_check}
+          upgrade_status: ${upgrade_status}
           #simulate_failure: ${simulate_failure}
         outVars:
           - "summary_logs"
