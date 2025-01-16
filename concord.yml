@@ -158,7 +158,6 @@ flows:
         in: 
           pre_upgrade_failed: true
         times: ${pre_upgrade_retry}
-    - exit
     - log: "Run baseline ping test"
     - call: ping_test_playbook
       in:
