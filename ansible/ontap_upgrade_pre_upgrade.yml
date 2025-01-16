@@ -29,7 +29,9 @@
     
     - name: Only run pre-upgrades if upgrade_status was not 'not_started' or 'in_pre_upgrade'
       meta: end_host
-      when: upgrade_status[inventory_hostname] != 'in_pre_upgrade' or upgrade_status[inventory_hostname] != 'not_started'
+      when: 
+        - upgrade_status[inventory_hostname] != 'in_pre_upgrade' 
+        - upgrade_status[inventory_hostname] != 'not_started'
 
   tasks:
   - block: 
