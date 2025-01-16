@@ -239,7 +239,7 @@ flows:
         - throw: "Something happened ${lastError}"
 
   health_checks:
-    - log: "Check upgrade_status variable: ${upgrade_status}"s
+    - log: "Check upgrade_status variable: ${upgrade_status}"
     - call: health_checks_playbook
       in: 
         ontap_clusters: ${health_checks_clusters}
