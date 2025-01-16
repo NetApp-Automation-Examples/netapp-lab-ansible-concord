@@ -78,8 +78,8 @@ flows:
           ontap_package_url: ${status_check_form.image_url}
         outVars:
           - upgrade_status
-      out: upgrade_status
-    - log: ${upgrade_status}
+      out: get_upgrade_status
+    - log: ${get_upgrade_status}
 
   main:  
     - form: status_check_form
@@ -96,12 +96,12 @@ flows:
           ontap_package_url: ${status_check_form.image_url}
         outVars:
           - upgrade_status
-      out: upgrade_status
-    - log: ${upgrade_status}
+      out: get_upgrade_status
+    - log: ${get_upgrade_status}
     - call: health_checks 
       in: 
         health_checks_clusters: ${status_check_form.clusters}
-        upgrade_status: ${upgrade_status}
+        upgrade_status: ${get_upgrade_status.upgrade_status}
     - log: "Completed pre-upgrade health checks"
     - exit
     - form: upgrade_form
