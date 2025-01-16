@@ -74,7 +74,7 @@
       - include_tasks: tasks/get_image_name_for_package.yml 
 
       - include_tasks: tasks/check_if_new_package_is_default.yml
-      when: nodes_need_new_image | length > 0
+      when: nodes_need_new_image | length == 0
 
     - name: Check for 'MAINT=<n>h Starting' autosupports within the last 4 hours
       netapp.ontap.na_ontap_rest_cli: 
