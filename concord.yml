@@ -195,7 +195,7 @@ flows:
     # - log: "Post upgrade results: ${post_upgrade}"
     - call: health_checks 
       in: 
-        health_checks_clusters: ${health_checks_form.clusters} 
+        health_checks_clusters: ${upgrade_clusters} 
         post_upgrade_check: True
     - log: "Completed post-upgrade health checks"
 
