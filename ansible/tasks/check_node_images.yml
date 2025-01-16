@@ -15,10 +15,11 @@
 - name: Build list of versions per node
   ansible.builtin.set_fact: 
     nodes_with_new_package: "{{ current_node_images | selectattr('version', 'equalto', ontap_package_version) }}" 
-    
+    nodes_need_new_image: []
+
 - name: "Build list of nodes without {{ ontap_package_version }}"
   ansible.builtin.set_fact: 
-    nodes_need_new_image: "{{ nodes_need_new_image | default([]) + [item] }}"
+    nodes_need_new_image: "{{ nodes_need_new_image + [item] }}"
   loop: "{{ nodes_list }}"
   loop_control: 
     label: "{{ item.name }} {{ item.version.full }}"
