@@ -101,6 +101,7 @@ flows:
     - call: health_checks 
       in: 
         health_checks_clusters: ${status_check_form.clusters}
+        upgrade_status: ${upgrade_status}
     - log: "Completed pre-upgrade health checks"
     - exit
     - form: upgrade_form
