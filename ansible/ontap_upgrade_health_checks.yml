@@ -26,9 +26,21 @@
     - name: "{{ pre_or_post_task_name }}"
       ansible.builtin.debug:
         var: post_upgrade_check
-    - name: "Upgrade Status"
-      ansible.builtin.debug:
-        var: upgrade_status
+    - block: 
+      - name: "Upgrade Status"
+        ansible.builtin.debug:
+          var: upgrade_status[inventory_hostname]
+      
+      - name: Fail playbook if upgrade_status is 'undetermined' 
+        ansible.builtin.fail:
+          msg: "Upgrade status is 'undetermined', which indicates an error at the upgrade status check step."
+        when: upgrade_status[inventory_hostname] == 'undetermined' 
+
+      - name: Skip playbook if upgrade_status is anything but 'not_started'
+        meta: end_host
+          msg: "Health checks only needed for 'not_started' status, and {{ inventory_hostname }} is {{ upgrade_status[inventory_hostname] }}"
+        when: upgrade_status[inventory_hostname] != 'not_started'
+      when: post_upgrade_check == False
   tasks:
 
     - name: Get cluster info
