@@ -146,7 +146,6 @@ flows:
       then: 
         - log: "There are no nodes to upgrade, ending process."
         - exit
-    then:
     - log: "Run the pre-upgrade tasks"
     - call: pre_upgrade_playbook
       in: 
