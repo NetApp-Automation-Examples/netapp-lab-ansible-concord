@@ -197,6 +197,7 @@ flows:
       in: 
         health_checks_clusters: ${upgrade_clusters} 
         post_upgrade_check: True
+        upgrade_stats: ${get_upgrade_status.upgrade_status}
     - log: "Completed post-upgrade health checks"
 
 
