@@ -38,7 +38,6 @@
 
       - name: Skip playbook if upgrade_status is anything but 'not_started'
         meta: end_host
-          msg: "Health checks only needed for 'not_started' status, and {{ inventory_hostname }} is {{ upgrade_status[inventory_hostname] }}"
         when: upgrade_status[inventory_hostname] != 'not_started'
       when: post_upgrade_check == False
   tasks:
