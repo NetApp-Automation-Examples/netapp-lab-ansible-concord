@@ -142,10 +142,6 @@ flows:
       error:
       - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
-    - if: ${sequential_nodes_list == []}
-      then: 
-        - log: "There are no nodes to upgrade, ending process."
-        - exit
     - log: "Run the pre-upgrade tasks"
     - call: pre_upgrade_playbook
       in: 

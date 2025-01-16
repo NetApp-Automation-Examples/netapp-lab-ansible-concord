@@ -18,6 +18,19 @@
       validate_certs: "{{ validate_certs }}"
 
   tasks:    
+  - name: Run a final `net int revert *` just to be sure 
+    block: 
+    - netapp.ontap.na_ontap_rest_cli: 
+        command: 'network/interface/revert'
+        params: 
+          lif: "*"
+        verb: "PATCH"
+      register: net_int_revert
+    rescue: 
+    - name: "Pause for connection failure on net int revert *"
+      ansible.builtin.pause: 
+        seconds: 20
+
   - name: "Re-enable autogiveback"
     block: 
     - name: storage failover modify -auto-giveback true -nodes *
