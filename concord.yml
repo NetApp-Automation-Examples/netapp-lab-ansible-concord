@@ -98,15 +98,11 @@ flows:
           - upgrade_status
       out: upgrade_status
     - log: ${upgrade_status}
+    - call: health_checks 
+      in: 
+        health_checks_clusters: ${status_check_form.clusters}
+    - log: "Completed pre-upgrade health checks"
     - exit
-    - if: ${health_checks_form.skip_first_health_check == false}
-      then:
-      - call: health_checks 
-        in: 
-          health_checks_clusters: ${health_checks_form.clusters} 
-      - log: "Completed pre-upgrade health checks"
-      else: 
-      - log: "Skipped pre-upgrade health checks"
     - form: upgrade_form
       fields:
       - clusters:  { 
@@ -246,6 +242,7 @@ flows:
       in: 
         ontap_clusters: ${health_checks_clusters}
         post_upgrade_check: ${orDefault('post_upgrade_check', 'False')}
+        upgrade_status: ${upgrade_status}
       retry:
         in: 
           health_checks_failed: true

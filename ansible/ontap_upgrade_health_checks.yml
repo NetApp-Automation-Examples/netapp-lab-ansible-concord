@@ -21,10 +21,14 @@
     check_for_not_online: ["storage/aggregates", "storage/volumes", "svm/svms"]
     post_upgrade_check: False
     pre_or_post_task_name: Run {{ 'post' if post_upgrade_check else 'pre' }}-upgrade health checks 
+    upgrade_status: []
   pre_tasks: 
     - name: "{{ pre_or_post_task_name }}"
       ansible.builtin.debug:
         var: post_upgrade_check
+    - name: "Upgrade Status"
+      ansible.builtin.debug:
+        var: upgrade_status
   tasks:
 
     - name: Get cluster info
