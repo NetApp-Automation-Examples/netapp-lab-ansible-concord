@@ -92,7 +92,7 @@ flows:
         extraVars:
           clusters: ${status_check_form.clusters} 
           ontap_creds: ${ontap_creds}
-          ontap_image: ${status_check_form.package_version}
+          ontap_package_version: ${status_check_form.package_version}
           ontap_package_url: ${status_check_form.image_url}
         outVars:
           - upgrade_status
