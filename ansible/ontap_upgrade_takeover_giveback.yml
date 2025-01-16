@@ -159,7 +159,7 @@
           override-vetoes: "{{ override_vetoes }}"
         verb: "POST"
       register: takeover
-    when: at_stasis is defined or version_mismatch is defined
+    when: (at_stasis is defined or version_mismatch is defined) and in_takeover is not defined
 
   - name: Check takeover status until we get "waiting for giveback"
     block: 
