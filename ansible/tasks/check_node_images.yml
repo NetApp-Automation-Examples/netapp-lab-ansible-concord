@@ -22,4 +22,4 @@
   loop: "{{ nodes_list }}"
   loop_control: 
     label: "{{ item.name }} {{ item.version.full }}"
-  when: item not in nodes_with_new_package | map(attribute="node")
+  when: item.name not in nodes_with_new_package | map(attribute="node")
