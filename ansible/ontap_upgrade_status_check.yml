@@ -19,6 +19,8 @@
     ontap_package_version: 9.11.1P1
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
     upgrade_status: "undetermined"
+    nodes_need_new_image: []
+    recent_maint_autosupports: []
   pre_tasks: 
   - include_tasks: tasks/check_package_url.yml
   tasks:
@@ -58,29 +60,34 @@
       fields: 
         - "ha,state,version"
 
-  - name: Set current_versions_by_node 
+  - name: Set nodes_list 
     ansible.builtin.set_fact: 
       nodes_list: "{{ ontap_rest_info['cluster/nodes']['records'] }}"
+      node_states: "{{ ontap_rest_info['cluster/nodes']['records'] | map(attribute='state') | unique }}"
 
-  - include_tasks: tasks/check_node_images.yml
+    # don't bother with pre_upgrade checks if the nodes are not all up 
+  - block: 
+    - include_tasks: tasks/check_node_images.yml
 
-  - name: Check for 'MAINT=<n>h Starting' autosupports within the last 4 hours
-    netapp.ontap.na_ontap_rest_cli: 
-      command: 'system/node/autosupport/history'
-      params: 
-        fields: "subject,trigger,error,last-update,status"
-        subject: "*ALL:MAINT=*h Starting*"
-        last-update: ">120m"
-      verb: "GET"
-    register: get_recent_maint_autosupports
+    - include_tasks: tasks/get_image_name_for_package.yml 
 
-  - name: Set maint_autosupports
-    ansible.builtin.set_fact: 
-      recent_maint_autosupports: "{{ get_recent_maint_autosupports['msg']['records'] }}"
+    - include_tasks: tasks/check_if_new_package_is_default.yml
 
-  - include_tasks: tasks/get_image_name_for_package.yml 
+    - name: Check for 'MAINT=<n>h Starting' autosupports within the last 4 hours
+      netapp.ontap.na_ontap_rest_cli: 
+        command: 'system/node/autosupport/history'
+        params: 
+          fields: "subject,trigger,error,last-update,status"
+          subject: "*ALL:MAINT=*h Starting*"
+          last-update: ">120m"
+        verb: "GET"
+      register: get_recent_maint_autosupports
 
-  - include_tasks: tasks/check_if_new_package_is_default.yml
+    - name: Set maint_autosupports
+      ansible.builtin.set_fact: 
+        recent_maint_autosupports: "{{ get_recent_maint_autosupports['msg']['records'] }}"
+
+    when: node_states | length == 1
 
   # TODO - extensively test the following logic to close all edge cases and ensure it works as expected
   - block: 
@@ -107,8 +114,8 @@
     ansible.builtin.set_fact:
       upgrade_status: "upgrade_in_progress"
     when: failover_status | selectattr('auto_giveback', 'false') | list | length > 0 
-          and nodes_need_new_image | length == 0 
-          and recent_maint_autosupports | length > 0
+          and nodes_need_new_image | length == 0 or node_states | length > 1
+
 
   - name: Set upgrade_status to completed if current ontap version == {{ ontap_package_version }} and failover status normal 
     ansible.builtin.set_fact:
