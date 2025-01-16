@@ -78,33 +78,37 @@
     ansible.builtin.set_fact: 
       recent_maint_autosupports: "{{ get_recent_maint_autosupports['msg']['records'] }}"
 
+  - include_tasks: tasks/get_image_name_for_package.yml 
+
+  - include_tasks: tasks/check_if_new_package_is_default.yml
+
   # TODO - extensively test the following logic to close all edge cases and ensure it works as expected
-  - name: Set upgrade_status to not_started if upgrade is not in progress
-    ansible.builtin.set_fact: 
-      upgrade_status: "not_started"
-    when: failover_status | selectattr('possible','true') | selectattr('enabled','true') | selectattr('auto_giveback','true') | list | length == failover_status | length 
-          and nodes_need_new_image | length == nodes_list | length 
-          and current_ontap_version | ontap_version != ontap_package_version
-          and nodes_list | map(attribute='version') | unique | length == 1
-  
-  - name: Set upgrade_status to in_pre_upgrade if some or all pre-upgrade tasks are completed, 
-          but failover status is normal, and all nodes still need new version
-    ansible.builtin.set_fact: 
-      upgrade_status: "in_pre_upgrade"
-    when: failover_status | selectattr('auto_giveback', 'false') | list | length ==  failover_status | list
-          and failover_status | selectattr('possible','true') | list | length == failover_status | length
-          and current_ontap_version | ontap_version != ontap_package_version
-          and nodes_list | map(attribute='version') | unique | length == 1
+  - block: 
+    
+    - name: Set upgrade_status to not_started if upgrade is not in progress
+      ansible.builtin.set_fact: 
+        upgrade_status: "not_started"
+      when: failover_status | selectattr('possible','true') | selectattr('enabled','true') | selectattr('auto_giveback','true') | list | length == failover_status | length 
+            and nodes_need_new_image | length == nodes_list | length 
+            and nodes_list | map(attribute='version') | unique | length == 1
+    
+    - name: Set upgrade_status to in_pre_upgrade if some or all pre-upgrade tasks are completed, 
+            but failover status is normal, and all nodes still need new version
+      ansible.builtin.set_fact: 
+        upgrade_status: "in_pre_upgrade"
+      when: failover_status | selectattr('auto_giveback', 'false') | list | length !=  failover_status | list
+            and  failover_status | selectattr('possible','true') | list | length == failover_status | length
+            and (nodes_need_new_image | length > 0 or false in new_package_is_default)
+ 
+    # end block
+    when: current_ontap_version | ontap_version != ontap_package_version
 
   - name: Set upgrade_status to upgrade_in_progress if failover status / node images are in a mixed state
     ansible.builtin.set_fact:
       upgrade_status: "upgrade_in_progress"
     when: failover_status | selectattr('auto_giveback', 'false') | list | length > 0 
-          and current_ontap_version | ontap_version != ontap_package_version
-          and (
-            nodes_need_new_image | length > 0 
-            or recent_maint_autosupports | length > 0
-          )
+          and nodes_need_new_image | length == 0 
+          and recent_maint_autosupports | length > 0
 
   - name: Set upgrade_status to completed if current ontap version == {{ ontap_package_version }} and failover status normal 
     ansible.builtin.set_fact:

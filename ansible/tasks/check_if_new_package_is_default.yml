@@ -1,0 +1,25 @@
+- name: |
+    Confirm {{ new_image_name }} {{ ontap_package_version }} is set to default
+    (`system node image show`)
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'system/node/image'
+    params: 
+      fields: "image,node,version,version,isdefault,iscurrent"
+    verb: "GET"
+  register: verify_node_image_set
+
+- name: Log of verify_node_image_set
+  ansible.builtin.debug: 
+    var: verify_node_image_set.msg.records | dicts_to_table 
+
+- name: >
+    Set new_package_is_default
+    (verify_node_image_set -> filter by image == {{ new_image_name }} -> map by isdefault) 
+  ansible.builtin.set_fact: 
+    new_package_is_default: "{{ verify_node_image_set.msg.records | 
+        selectattr('image', 'equalto', new_image_name) | 
+        map(attribute='isdefault') }}"
+
+- name: log   
+  ansible.builtin.debug:
+    var: new_package_is_default
