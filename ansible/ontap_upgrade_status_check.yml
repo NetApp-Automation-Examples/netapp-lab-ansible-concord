@@ -110,7 +110,7 @@
         - failover_status | selectattr('auto_giveback', 'false') | list | length !=  failover_status | list | length
         - failover_status | selectattr('possible','true') | list | length == failover_status | length
         - (nodes_need_new_image | length > 0 or false in new_package_is_default)
-        - ugrade_status != 'not_started'
+        - upgrade_status != 'not_started'
  
     # end block
     when: 
