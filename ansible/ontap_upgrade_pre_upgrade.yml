@@ -14,6 +14,7 @@
     node_image_no_update_in_progress_text: "There is no update/install in progress"
     node_image_update_failure_text: "Failed"
     node_image_update_success_text: ["Installation complete.","Success"]
+    upgrade_status: []
   module_defaults:    
     group/netapp.ontap.netapp_ontap:      
       hostname: "{{ ontap_hostname }}"
@@ -21,6 +22,16 @@
       password: "{{ ontap_password }}"
       https: "{{ https }}"
       validate_certs: "{{ validate_certs }}"
+  pre_tasks: 
+    - name: "Log of upgrade_status"
+      ansible.builtin.debug:
+        var: upgrade_status[inventory_hostname]
+    
+    - name: Only run pre-upgrades if upgrade_status was not 'not_started' or 'in_pre_upgrade'
+      meta: end_host
+      when: 
+        - upgrade_status[inventory_hostname] != 'in_pre_upgrade'
+        - upgrade_status[inventory_hostname] != 'not_started'
   tasks:
   - block: 
     - name: Get cluster nodes info (`netapp.ontap.na_ontap_rest_info`)

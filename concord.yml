@@ -103,20 +103,17 @@ flows:
         health_checks_clusters: ${status_check_form.clusters}
         upgrade_status: ${get_upgrade_status.upgrade_status}
     - log: "Completed pre-upgrade health checks"
-    - exit
-    - form: upgrade_form
+    - form: confirm_upgrade_form
       fields:
       - clusters:  { 
           label: "Cluster(s) that passed health checks", type: "string+", readonly: false, 
-          allow: "${health_checks_form.clusters}", value: "${health_checks_form.clusters}"
+          allow: "${status_check_form.clusters}", value: "${status_check_form.clusters}"
         }
-      - skip_pre_upgrade_steps: { label: "Skip pre-upgrade steps? (image upload, autosupport, etc)", type: "boolean"}
 
     - set:
-        upgrade_clusters: ${upgrade_form.clusters}
-        upgrade_image_url: ${upgrade_form.image_url}
-        upgrade_package_version: ${upgrade_form.package_version}
-        skip_pre_upgrade: ${upgrade_form.skip_pre_upgrade_steps}
+        upgrade_clusters: ${confirm_upgrade_form.clusters}
+        upgrade_image_url: ${status_check_form.image_url}
+        upgrade_package_version: ${status_check_form.package_version}
 
     - log: "Get LIFs for ping test and HA Pairs that haven't been upgraded yet"
     - task: ansible
@@ -149,22 +146,19 @@ flows:
       then: 
         - log: "There are no nodes to upgrade, ending process."
         - exit
-    - if: ${skip_pre_upgrade == false}
-      then:
-      - log: "Run the pre-upgrade tasks"
-      - call: pre_upgrade_playbook
+    then:
+    - log: "Run the pre-upgrade tasks"
+    - call: pre_upgrade_playbook
+      in: 
+        ontap_clusters: ${upgrade_clusters}
+        ontap_package_version: ${upgrade_package_version}
+        ontap_package_url: ${upgrade_image_url}
+        upgrade_status: ${get_upgrade_status.upgrade_status}
+      out: pre_upgrade_results
+      retry:
         in: 
-          ontap_clusters: ${upgrade_clusters}
-          ontap_package_version: ${upgrade_package_version}
-          ontap_package_url: ${upgrade_image_url}
-        out: pre_upgrade_results
-        retry:
-          in: 
-            pre_upgrade_failed: true
-          times: ${pre_upgrade_retry}
-      else: 
-      - log: "Skipping pre-upgrade steps per form selection."
-
+          pre_upgrade_failed: true
+        times: ${pre_upgrade_retry}
     - log: "Run baseline ping test"
     - call: ping_test_playbook
       in:
@@ -366,6 +360,7 @@ flows:
           ontap_creds: ${ontap_creds}
           ontap_package_version: ${ontap_package_version}
           ontap_package_url: ${ontap_package_url}
+          upgrade_status: ${upgrade_status}
       out: pre_upgrade_out
     - set:
         pre_upgrade_results: ${pre_upgrade_out}
