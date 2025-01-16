@@ -225,7 +225,7 @@ flows:
           - call: send_slack
             in: 
               slack_text: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
-          - log: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
+          - throw: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
           - exit        
       error: 
         - throw: "Something happened ${lastError}"
@@ -245,7 +245,7 @@ flows:
         - call: send_slack
           in: 
             slack_text: "Health Check playbook has failed ${health_checks_retry} times"
-        - log: "Health Check playbook has failed ${health_checks_retry} times"
+        - throw: "Health Check playbook has failed ${health_checks_retry} times"
         - exit
       
     - log: "Health checks playbook ran succesfully, review before proceeding"
