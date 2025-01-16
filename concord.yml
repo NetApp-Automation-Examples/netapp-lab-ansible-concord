@@ -142,43 +142,45 @@ flows:
       error:
       - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
-    - log: "Run the pre-upgrade tasks"
-    - call: pre_upgrade_playbook
-      in: 
-        ontap_clusters: ${upgrade_clusters}
-        ontap_package_version: ${upgrade_package_version}
-        ontap_package_url: ${upgrade_image_url}
-        upgrade_status: ${get_upgrade_status.upgrade_status}
-      out: pre_upgrade_results
-      retry:
+    - if: ${sequential_nodes_list != []}
+      then: 
+      - log: "Run the pre-upgrade tasks"
+      - call: pre_upgrade_playbook
         in: 
-          pre_upgrade_failed: true
-        times: ${pre_upgrade_retry}
-    - log: "Run baseline ping test"
-    - call: ping_test_playbook
-      in:
-        mock: ${mock}
-        ontap_clusters: ${upgrade_clusters}
-        lifs_to_test: ${lifs_to_test}
-      out: ping_test_results
-    - set: 
-        ping_test_baseline: ${ping_test_results.lifs_ping_test_results}
-    # - log: ping_test_baseline = ${ping_test_baseline}
+          ontap_clusters: ${upgrade_clusters}
+          ontap_package_version: ${upgrade_package_version}
+          ontap_package_url: ${upgrade_image_url}
+          upgrade_status: ${get_upgrade_status.upgrade_status}
+        out: pre_upgrade_results
+        retry:
+          in: 
+            pre_upgrade_failed: true
+          times: ${pre_upgrade_retry}
+      - log: "Run baseline ping test"
+      - call: ping_test_playbook
+        in:
+          mock: ${mock}
+          ontap_clusters: ${upgrade_clusters}
+          lifs_to_test: ${lifs_to_test}
+        out: ping_test_results
+      - set: 
+          ping_test_baseline: ${ping_test_results.lifs_ping_test_results}
+      # - log: ping_test_baseline = ${ping_test_baseline}
 
-    - log: Run the takeover_giveback on each ha pair sequentially 
-    - call: upgrade_node
-      in: 
-        nodes_list: ${item}
-        lifs_to_test: ${lifs_to_test}
-        ping_test_baseline: ${ping_test_baseline}
-        target_ontap_version: ${upgrade_package_version}
-      loop: 
-        items: ${sequential_nodes_list}
-    - call: ping_tests
-      in: 
-        ping_test_clusters: ${upgrade_clusters}  
-        ping_test_lifs: ${lifs_to_test}
-        ping_test_baseline: ${ping_test_baseline}
+      - log: Run the takeover_giveback on each ha pair sequentially 
+      - call: upgrade_node
+        in: 
+          nodes_list: ${item}
+          lifs_to_test: ${lifs_to_test}
+          ping_test_baseline: ${ping_test_baseline}
+          target_ontap_version: ${upgrade_package_version}
+        loop: 
+          items: ${sequential_nodes_list}
+      - call: ping_tests
+        in: 
+          ping_test_clusters: ${upgrade_clusters}  
+          ping_test_lifs: ${lifs_to_test}
+          ping_test_baseline: ${ping_test_baseline}
     - log: Run the post-upgrade tasks
     - task: ansible
       in:
