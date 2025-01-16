@@ -15,8 +15,8 @@
   vars_files: 
     - http_server.yml
   vars: 
-    ontap_image: 9111P1_q_image.tgz
-    ontap_package_version: 9.11.1P1
+    ontap_image: 9111P2_q_image.tgz
+    ontap_package_version: 9.11.1P12
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
     upgrade_status: "undetermined"
     nodes_need_new_image: []
@@ -98,16 +98,19 @@
     - name: Set upgrade_status to not_started if upgrade is not in progress
       ansible.builtin.set_fact: 
         upgrade_status: "not_started"
-      when: failover_status | selectattr('possible','true') | selectattr('enabled','true') | selectattr('auto_giveback','true') | list | length == failover_status | length 
-            and nodes_need_new_image | length == nodes_list | length 
+      when: 
+        - failover_status | selectattr('possible','true') | selectattr('enabled','true') | selectattr('auto_giveback','true') | list | length == failover_status | length 
+        - nodes_need_new_image | length == nodes_list | length 
     
     - name: Set upgrade_status to in_pre_upgrade if some or all pre-upgrade tasks are completed, 
             but failover status is normal, and all nodes still need new version
       ansible.builtin.set_fact: 
         upgrade_status: "in_pre_upgrade"
-      when: failover_status | selectattr('auto_giveback', 'false') | list | length !=  failover_status | list | length
-            and failover_status | selectattr('possible','true') | list | length == failover_status | length
-            and (nodes_need_new_image | length > 0 or false in new_package_is_default)
+      when: 
+        - failover_status | selectattr('auto_giveback', 'false') | list | length !=  failover_status | list | length
+        - failover_status | selectattr('possible','true') | list | length == failover_status | length
+        - (nodes_need_new_image | length > 0 or false in new_package_is_default)
+        - ugrade_status != 'not_started'
  
     # end block
     when: 
