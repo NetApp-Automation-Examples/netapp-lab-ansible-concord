@@ -27,7 +27,7 @@
       ansible.builtin.debug:
         var: post_upgrade_check
     - block: 
-      - name: "Upgrade Status"
+      - name: "Log of upgrade_status"
         ansible.builtin.debug:
           var: upgrade_status[inventory_hostname]
       
@@ -39,7 +39,7 @@
       - name: Skip playbook if upgrade_status is anything but 'not_started'
         meta: end_host
         when: upgrade_status[inventory_hostname] != 'not_started'
-      when: post_upgrade_check == False
+      when: not post_upgrade_check
   tasks:
 
     - name: Get cluster info
