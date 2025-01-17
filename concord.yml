@@ -94,7 +94,7 @@ flows:
       in:
         nodes_list: ${item}
         skip_ping_test: ${skip_ping_test}
-        first_loop_run: ${first_loop_run}
+        first_loop_run: ${orDefault('first_loop_run', 'true')
       loop: 
         items: ${sequential_nodes_list}
       out: 
@@ -103,7 +103,7 @@ flows:
   test_loop:
     - log: ${nodes_list}
     - log: "Skip ping test var: ${skip_ping_test}"
-    - log: "First Loop run: ${orDefault('first_loop_run', 'true')}}"
+    - log: "First Loop run: ${first_loop_run}"
     - set:
         first_loop_run: false
 
