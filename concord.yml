@@ -88,12 +88,18 @@ flows:
       error:
       - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
-    - task: log
+    - call: test_loop
       in:
-        msg: "${item} = ${item.key} - ${item.value}"
+        nodes_list: ${item}
+        skip_ping_test: true
       loop: 
         items: ${sequential_nodes_list}
 
+  test_loop:
+    - log: ${nodes_list}
+    - log: ${skip_ping_test}
+    - set:
+        skip_ping_test: false
 
 
   main:  
