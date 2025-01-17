@@ -90,7 +90,7 @@ flows:
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
     - task: log
       in:
-        msg: "${item.key} - ${item.value}"
+        msg: "${item} = ${item.key} - ${item.value}"
       loop: 
         items: ${sequential_nodes_list}
 
