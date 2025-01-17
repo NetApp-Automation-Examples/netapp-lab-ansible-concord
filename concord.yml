@@ -94,7 +94,7 @@ flows:
       in:
         nodes_list: ${item}
         skip_ping_test: ${skip_ping_test}
-        first_loop_run: ${orDefault('first_loop_run', 'true')
+        first_loop_run: ${orDefault('first_loop_run', 'true')}
       loop: 
         items: ${sequential_nodes_list}
       out: 
