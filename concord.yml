@@ -59,54 +59,6 @@ flows:
     #     test: "UPPERCASE.domain.com"
     # - log: ${test}
     # - log: ${test.toLowerCase()}
-    - set:
-        upgrade_clusters: "cluster1,cluster2"
-        upgrade_package_version: "9.12.1P7"          
-    - task: ansible
-      in:
-        dockerImage: ${docker_image}
-        configFile: ${ansible_config}
-        inventoryFile: ${ansible_inventory}
-        playbook: ansible/get_lifs_and_ha_pairs.yml
-        extraVars:
-          clusters: ${upgrade_clusters} 
-          ontap_creds: ${ontap_creds}
-          target_ontap_version: ${upgrade_package_version}
-        outVars:
-          - lifs_to_test
-          - ha_pairs_to_upgrade
-      out: get_lifs_and_ha_pairs
-    # - log: ${get_lifs_and_ha_pairs}
-    - set: 
-        lifs_to_test: ${get_lifs_and_ha_pairs.lifs_to_test}
-        ha_pairs_to_upgrade: ${get_lifs_and_ha_pairs.ha_pairs_to_upgrade}
-        # for the time being don't mess with the "js" file 
-        ha_pairs: ${get_lifs_and_ha_pairs.ha_pairs_to_upgrade}
-    # - log: "lifs_to_test = ${lifs_to_test}"
-    - log: "ha_pairs_to_upgrade = ${ha_pairs_to_upgrade}"
-    - script: scripts/sequential_nodes_list.js
-      error:
-      - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
-    - log: "sequential_nodes_list: ${sequential_nodes_list}"
-    - set: 
-        skip_ping_test: true
-    - call: test_loop
-      in:
-        nodes_list: ${item}
-        skip_ping_test: ${skip_ping_test}
-        first_loop_run: ${orDefault('first_loop_run', 'true')}
-      loop: 
-        items: ${sequential_nodes_list}
-      out: 
-        - first_loop_run
-
-  test_loop:
-    - log: ${nodes_list}
-    - log: "Skip ping test var: ${skip_ping_test}"
-    - log: "First Loop run: ${first_loop_run}"
-    - set:
-        first_loop_run: false
-
 
   main:  
     - form: status_check_form
@@ -203,11 +155,11 @@ flows:
           target_ontap_version: ${upgrade_package_version}
         loop: 
           items: ${sequential_nodes_list}
-      - call: ping_tests
-        in: 
-          ping_test_clusters: ${upgrade_clusters}  
-          ping_test_lifs: ${lifs_to_test}
-          ping_test_baseline: ${ping_test_baseline}
+      # - call: ping_tests
+      #   in: 
+      #     ping_test_clusters: ${upgrade_clusters}  
+      #     ping_test_lifs: ${lifs_to_test}
+      #     ping_test_baseline: ${ping_test_baseline}
     - log: Run the post-upgrade tasks
     - task: ansible
       in:
@@ -231,13 +183,6 @@ flows:
   upgrade_node: 
     - log: "nodes = ${nodes_list}"
     - try: 
-      - if: ${skip_ping_test == false}
-        then:
-          - call: ping_tests
-            in: 
-              ping_test_clusters: ${upgrade_clusters}  
-              ping_test_lifs: ${lifs_to_test}
-              ping_test_baseline: ${ping_test_baseline}
       - call: takeover_giveback_playbook
         in: 
             nodes: ${nodes_list}
@@ -254,6 +199,13 @@ flows:
               slack_text: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
           - throw: "Takeover/giveback playbook has failed ${takeover_giveback_retry} times"
           - exit        
+      - if: ${skip_ping_test == false}
+        then:
+          - call: ping_tests
+            in: 
+              ping_test_clusters: ${upgrade_clusters}  
+              ping_test_lifs: ${lifs_to_test}
+              ping_test_baseline: ${ping_test_baseline}
       error: 
         - throw: "Something happened ${lastError}"
 
