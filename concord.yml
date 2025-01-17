@@ -85,7 +85,6 @@ flows:
       error:
       - log: "Error occured with sequential_node_list.js: ${lastError.cause}"
     - log: "sequential_nodes_list: ${sequential_nodes_list}"
-    - if: ${sequential_nodes_list != []}
     - task: log
       in:
         msg: "${item.key} - ${item.value}"
