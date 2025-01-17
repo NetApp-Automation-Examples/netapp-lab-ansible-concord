@@ -125,7 +125,7 @@
     - block: 
       - name: log of nodes_need_new_image
         ansible.builtin.debug:
-          var: nodes_need_new_image
+          var: nodes_need_new_image | map(attribute='name')
         when: nodes_need_new_image is defined
       
       - name: >
@@ -147,7 +147,7 @@
 
       - name: Log of nodes_nothing_in_progress
         ansible.builtin.debug: 
-          var: nodes_nothing_in_progress
+          var: nodes_nothing_in_progress | map(attribute='name')
 
       - name: >
           "system node image update -node <node> -background true -package {{ ontap_package_url }} -replace-package true"
@@ -165,7 +165,7 @@
 
       - name: "Log of node_image_upload"
         ansible.builtin.debug: 
-          var: node_image_upload
+          var: node_image_upload.results | map(attribute='msg')
       
       - name: Give it 10 seconds
         ansible.builtin.pause: 
