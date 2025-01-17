@@ -55,10 +55,10 @@ forms:
     
 flows:
   dev: 
-    # - set:
-    #     test: "UPPERCASE.domain.com"
-    # - log: ${test}
-    # - log: ${test.toLowerCase()}
+    - set:
+        test: "UPPERCASE.domain.com"
+    - log: ${test}
+    - log: ${test.toLowerCase()}
 
   main:  
     - form: status_check_form
