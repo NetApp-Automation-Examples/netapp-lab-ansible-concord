@@ -94,8 +94,11 @@ flows:
       in:
         nodes_list: ${item}
         skip_ping_test: ${skip_ping_test}
+        first_loop_run: ${first_loop_run}
       loop: 
         items: ${sequential_nodes_list}
+      out: 
+        - first_loop_run
 
   test_loop:
     - log: ${nodes_list}
