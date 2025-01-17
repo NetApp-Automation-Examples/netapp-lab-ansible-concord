@@ -138,6 +138,8 @@
           verb: "POST"
         register: check_if_node_image_upload_in_progress
         loop: "{{ nodes_need_new_image }}"
+        loop_control: 
+          label: "{{ item.name}}"
 
       - name: Build list of only nodes with no update already in progress 
         ansible.builtin.set_fact: 
@@ -162,6 +164,8 @@
           verb: "PATCH"
         register: node_image_upload 
         loop: "{{ nodes_nothing_in_progress }}"
+        loop_control: 
+          label: "{{ item.name}}"
 
       - name: "Log of node_image_upload"
         ansible.builtin.debug: 
