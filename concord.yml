@@ -99,9 +99,10 @@ flows:
 
   test_loop:
     - log: ${nodes_list}
-    - log: ${skip_ping_test}
+    - log: "Skip ping test var: ${skip_ping_test}"
+    - log: "First Loop run: ${orDefault('first_loop_run', 'true')}}"
     - set:
-        skip_ping_test: false
+        first_loop_run: false
 
 
   main:  
