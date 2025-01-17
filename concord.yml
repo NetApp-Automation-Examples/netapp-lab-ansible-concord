@@ -59,6 +59,9 @@ flows:
     #     test: "UPPERCASE.domain.com"
     # - log: ${test}
     # - log: ${test.toLowerCase()}
+    - set:
+        upgrade_clusters: "cluster1,cluster2"
+        upgrade_package_version: "9.11.1P16"          
     - task: ansible
       in:
         dockerImage: ${docker_image}
