@@ -3,7 +3,7 @@
     command: 'system/node/image'
     params: 
       fields: "image"
-      version: "{{ ontap_package_version }}"
+      version: "*{{ ontap_package_version }}"
     verb: "GET"
   register: node_image_new_package
 
