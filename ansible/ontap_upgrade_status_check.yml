@@ -20,6 +20,7 @@
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
     upgrade_status: "undetermined"
     nodes_need_new_image: []
+    new_package_is_default: []
     recent_maint_autosupports: []
   pre_tasks: 
   - include_tasks: tasks/check_package_url.yml
@@ -117,13 +118,13 @@
       - nodes_list | map(attribute='version') | unique | length == 1
 
   - name: Set upgrade_status to upgrade_in_progress if autogiveback = false on all nodes, all nodes
-          have the new package uploaded and set to default, 
-          failover status / node images are in a mixed state
+          have the new package uploaded / set to default, 
+          and failover status / node images are in a mixed state
     ansible.builtin.set_fact:
       upgrade_status: "upgrade_in_progress"
     when: 
-      - failover_status | selectattr('auto_giveback', 'false') | list | length ==  failover_status | list | length
-      - nodes_need_new_image | length == 0 and new_package_is_default | unique == [true] 
+      - failover_status | selectattr('auto_giveback','defined') | map(attribute='auto_giveback') | unique | unique == [false]
+      - nodes_need_new_image | length == 0 or new_package_is_default | unique == [true] 
       - node_states | length > 1 or failover_status | selectattr('possible', 'false') | list | length > 0 
 
 
