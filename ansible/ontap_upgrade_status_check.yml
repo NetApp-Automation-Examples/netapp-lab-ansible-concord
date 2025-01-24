@@ -125,8 +125,9 @@
     when: 
       - failover_status | selectattr('auto_giveback','defined') | map(attribute='auto_giveback') | unique | unique == [false]
       - nodes_need_new_image | length == 0 or new_package_is_default | unique == [true] 
-      - node_states | length > 1 or failover_status | selectattr('possible', 'false') | list | length > 0 
-
+      - nodes_list | map(attribute='version') | unique | length > 1 
+          or node_states | length > 1 
+          or failover_status | selectattr('possible', 'false') | list | length > 0 
 
   - name: Set upgrade_status to completed if current ontap version == {{ ontap_package_version }} and failover status normal 
     ansible.builtin.set_fact:
