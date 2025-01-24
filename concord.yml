@@ -16,9 +16,9 @@ configuration:
       - 9.11.1P1
       - 9.11.1P2
       - 9.11.1P16
-      - 9.12.1
+      - Yellowdog__9.12.1
       - 9.12.1P7
-      - 9.13.1
+      - Lighthouse__9.13.1
     ontap_creds: ${crypto.exportCredentials('Default', 'OntapCreds', null)}
     health_checks_failed: false
     pre_upgrade_failed: false
