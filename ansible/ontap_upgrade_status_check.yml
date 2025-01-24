@@ -15,8 +15,8 @@
   vars_files: 
     - http_server.yml
   vars: 
-    ontap_image: 9121P7_q_image.tgz
-    ontap_package_version: 9.12.1P7s
+    ontap_image: 9131_q_image.tgz
+    ontap_package_version: Lighthouse__9.13.1
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
     upgrade_status: "undetermined"
     nodes_need_new_image: []
@@ -110,18 +110,21 @@
         - failover_status | selectattr('possible','true') | list | length == failover_status | length
         - nodes_need_new_image | length > 0 or false in new_package_is_default
         - upgrade_status != 'not_started'
- 
+  
     # end block
     when: 
       - current_ontap_version | ontap_version != ontap_package_version
       - nodes_list | map(attribute='version') | unique | length == 1
 
-  - name: Set upgrade_status to upgrade_in_progress if failover status / node images are in a mixed state
+  - name: Set upgrade_status to upgrade_in_progress if autogiveback = false on all nodes, all nodes
+          have the new package uploaded and set to default, 
+          failover status / node images are in a mixed state
     ansible.builtin.set_fact:
       upgrade_status: "upgrade_in_progress"
     when: 
-      - failover_status | selectattr('auto_giveback', 'false') | list | length !=  failover_status | list | length
-      - nodes_need_new_image | length == 0 or node_states | length > 1
+      - failover_status | selectattr('auto_giveback', 'false') | list | length ==  failover_status | list | length
+      - nodes_need_new_image | length == 0 and new_package_is_default | unique == [true] 
+      - node_states | length > 1 or failover_status | selectattr('possible', 'false') | list | length > 0 
 
 
   - name: Set upgrade_status to completed if current ontap version == {{ ontap_package_version }} and failover status normal 
