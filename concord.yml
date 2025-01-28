@@ -20,6 +20,7 @@ configuration:
       - 9.12.1P7
       - Lighthouse__9.13.1
       - Clawhammer__9.14.1
+      - Clawhammer__9.14.1P2
     ontap_creds: ${crypto.exportCredentials('Default', 'OntapCreds', null)}
     health_checks_failed: false
     pre_upgrade_failed: false
