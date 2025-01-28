@@ -15,8 +15,8 @@
   vars_files: 
     - http_server.yml
   vars: 
-    ontap_image: 9131_q_image.tgz
-    ontap_package_version: Lighthouse__9.13.1
+    ontap_image: 9111P1_q_image.tgz
+    ontap_package_version: 9.11.1P1    
     ontap_package_url: "{{ http_server_url }}/{{ ontap_image }}"
     upgrade_status: "undetermined"
     nodes_need_new_image: []
@@ -95,7 +95,6 @@
 
   # TODO - extensively test the following logic to close all edge cases and ensure it works as expected
   - block: 
-      
     - name: Set upgrade_status to not_started if upgrade is not in progress
       ansible.builtin.set_fact: 
         upgrade_status: "not_started"
@@ -109,9 +108,9 @@
         upgrade_status: "in_pre_upgrade"
       when: 
         - failover_status | selectattr('possible','true') | list | length == failover_status | length
-        - nodes_need_new_image | length > 0 or false in new_package_is_default
+        #- nodes_need_new_image | length > 0 or false in new_package_is_default
         - upgrade_status != 'not_started'
-  
+
     # end block
     when: 
       - current_ontap_version | ontap_version != ontap_package_version
