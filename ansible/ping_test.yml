@@ -90,19 +90,6 @@
 
   - name: If baseline is different from the latest run, set lifs_test_results_diff 
     block: 
-    - name: Log of diff
-      ansible.builtin.debug: 
-        msg: |
-          Baseline failed pings ({{ lifs_baseline_ping_test_results.failed.count }}):
-          {% for fail in lifs_baseline_ping_test_results.failed.records %}
-            {{ fail.ip.address }} - {{ fail.name }}
-          {% endfor %}
-
-          Latest failed pings ({{ lifs_ping_test_results.failed.count }}):"
-          {% for fail in lifs_ping_test_results.failed.records %}
-            {{ fail.ip.address }} - {{ fail.name }}
-          {% endfor %}
-
     - name: Set lifs_ping_test_diff
       ansible.builtin.set_fact:
         lifs_diff_ping_test_results:
@@ -121,6 +108,19 @@
         after: "{{ lifs_ping_test_results.failed }}"
       register: lifs_diff_failed_ping_test_results
 
+    - name: Fail playbook
+      ansible.builtin.fail: 
+        msg: |
+          Baseline failed pings ({{ lifs_baseline_ping_test_results.failed.count }}):
+          {% for fail in lifs_baseline_ping_test_results.failed.records %}
+            {{ fail.ip.address }} - {{ fail.name }}
+          {% endfor %}
+
+          Latest failed pings ({{ lifs_ping_test_results.failed.count }}):"
+          {% for fail in lifs_ping_test_results.failed.records %}
+            {{ fail.ip.address }} - {{ fail.name }}
+          {% endfor %}
+    
     when: lifs_ping_test_results != lifs_baseline_ping_test_results
   # Set diff var
   

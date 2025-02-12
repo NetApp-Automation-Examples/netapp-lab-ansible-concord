@@ -27,7 +27,7 @@ configuration:
     health_checks_failed: false
     pre_upgrade_failed: false
     takeover_giveback_failed: false
-    ping_test_failures: false
+    ping_test_failed: false
     health_checks_retry: 5
     skip_ping_test: false
     ping_tests_retry: 5
@@ -249,28 +249,20 @@ flows:
         ontap_clusters: ${ping_test_clusters}
         lifs_to_test: ${ping_test_lifs}
         lifs_baseline_ping_test: ${ping_test_baseline}
+      retry:
+        in: 
+          ping_test_failed: true
+        times: ${ping_tests_retry}
       out: ping_test_results
-    # - log: ${ping_test_results}
-    - log: "Ping tests playbook ran succesfully"
-    - if: ${hasVariable('ping_test_results.lifs_diff_ping_test_results') and ping_test_results.lifs_diff_ping_test_results != ""} 
-      then: 
-        - log: Review diff with baseline pint test before proceeding"
+      error: 
         - call: send_slack
           in: 
-            slack_emoji: ":pr_normal_review:"
-            slack_text: "ONTAP Upgrade concord process needs ping tests reviewed before it can proceed"
-        - form: review_ping_tests_form
-          saveSubmittedBy: true
-        - log: "Logs/progress reviewed by ${review_ping_tests_form.submittedBy.displayName}"
-        - if: ${review_ping_tests_form.end_process == true or review_ping_tests_form.reviewed == false}
-          then:
-            - log: "Process ended by ${review_ping_tests_form.submittedBy.displayName}: ${review_ping_tests_form}"
-            - call: send_slack
-              in: 
-                slack_text: "ONTAP Upgrade concord process ended after ping test review by ${review_ping_tests_form.submittedBy.displayName}"
-            - exit
-      else: 
-        - log: No need to review, the latest ping test results matched the baseline ping test results
+            slack_text: "Ping Test playbook has failed ${ping_tests_retry} times"
+        - throw: "Health Check playbook has failed ${ping_tests_retry} times"
+        - exit
+
+    # - log: ${ping_test_results}
+    - log: "Ping tests matched the baseline, no review neccessary"
 
   takeover_giveback_playbook:
     - set: 
@@ -315,7 +307,24 @@ flows:
             slack_emoji: ":stop:"
             slack_text: "ONTAP Upgrade concord process ended after takeover/giveback failure by ${review_takeover_giveback_form.submittedBy.displayName}"
         - exit
-
+  
+  review_ping_test: 
+    - log: Review diff with baseline ping test before proceeding"
+    - call: send_slack
+      in: 
+        slack_emoji: ":pr_normal_review:"
+        slack_text: "ONTAP Upgrade concord process needs ping test diff reviewed before it can proceed"
+    - form: review_ping_tests_form
+      saveSubmittedBy: true
+    - log: "Logs/progress reviewed by ${review_ping_tests_form.submittedBy.displayName}"
+    - if: ${review_ping_tests_form.end_process == true or review_ping_tests_form.reviewed == false}
+      then:
+        - log: "Process ended by ${review_ping_tests_form.submittedBy.displayName}: ${review_ping_tests_form}"
+        - call: send_slack
+          in: 
+            slack_text: "ONTAP Upgrade concord process ended after ping test review by ${review_ping_tests_form.submittedBy.displayName}"
+        - exit
+    
   review:
     - call: send_slack
       in: 
@@ -383,6 +392,10 @@ flows:
 
   ping_test_playbook: 
     - log: "mock value = ${mock}"
+    - log: "ping_test_failed value = ${ping_test_failed}"
+    - if: ${ping_test_failed == true}
+      then:
+        - call: review_ping_test
     - task: ansible
       in:
         dockerImage: ${docker_image}
