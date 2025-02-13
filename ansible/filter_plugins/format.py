@@ -2,6 +2,7 @@ from ansible.errors import AnsibleError, AnsibleFilterError
 import sys
 from io import StringIO
 from unittest.mock import patch
+from itertools import chain 
 
 # capture stdout just for this function 
 stream = StringIO()
@@ -15,14 +16,18 @@ def print_list_of_dicts_as_table(list_of_dicts, keys=None):
         return list_of_dicts
 
     with patch('sys.stdout', stream):
+        # credit: https://stackoverflow.com/a/67198100       
+        # assuming all dicts have same keys, so make sure they do
+        all_keys = set(chain.from_iterable(list_of_dicts))   
+        for dictionary in list_of_dicts:
+            dictionary.update((k,None) for k in all_keys-dictionary.keys())
 
-        # credit: https://stackoverflow.com/a/67198100
-        # assuming all dicts have same keys
         first_entry = list_of_dicts[0]
         if keys is None:
             keys = first_entry.keys()
-        num_keys = len(keys)
+            keys_order = list(keys)
 
+        num_keys = len(keys)
         max_key_lens = [
             max(len(str(item[k])) for item in list_of_dicts) for k in keys
         ]
@@ -36,7 +41,9 @@ def print_list_of_dicts_as_table(list_of_dicts, keys=None):
         for entry in list_of_dicts:
             # handle lists
             row = []
-            for cell in entry.values():
+            # make sure everything is printed in the same order 
+            for k in keys_order:
+                cell = entry[k]
                 if isinstance(cell, list):
                     cell = ','.join(cell)
                 row.append(str(cell))
