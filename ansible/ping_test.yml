@@ -121,6 +121,8 @@
             {{ fail.ip.address }} - {{ fail.name }}
           {% endfor %}
     
-    when: lifs_ping_test_results != lifs_baseline_ping_test_results
+    when: 
+      - lifs_ping_test_results.failed.count > lifs_baseline_ping_test_results.failed.count
+      - lifs_ping_test_results != lifs_baseline_ping_test_results
   # Set diff var
   
