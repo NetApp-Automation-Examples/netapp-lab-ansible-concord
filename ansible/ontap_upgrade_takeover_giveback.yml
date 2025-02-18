@@ -169,15 +169,17 @@
               and takeover_status.response.state == 'waiting_for_giveback'
       retries: "{{ failover_status_retries }}"
       delay: "{{ failover_status_delay }}"     
-
-    - name: Give it {{ pause_in_seconds_between_takeover_giveback }} seconds before we try giveback
-      ansible.builtin.pause:
-        seconds: "{{ pause_in_seconds_between_takeover_giveback }}"
         
     when: takeover is defined or in_takeover is defined 
  
   - name: Do the giveback
     block: 
+    # only run the delay if it wasn't already in waiting_for_giveback state prior to this playbook run
+    - name: Give it {{ pause_in_seconds_between_takeover_giveback }} seconds before we try giveback
+      ansible.builtin.pause:
+        seconds: "{{ pause_in_seconds_between_takeover_giveback }}"
+      when: node_state != 'waiting_for_giveback'
+
     - name: storage failover giveback -ofnode <node> -override-vetoes {{ override_vetoes }}
       netapp.ontap.na_ontap_rest_cli: 
         command: 'storage/failover/giveback'
