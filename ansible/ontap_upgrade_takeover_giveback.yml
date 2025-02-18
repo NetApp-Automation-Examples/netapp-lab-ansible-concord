@@ -8,16 +8,13 @@
   vars:
     # Set this var to stop playbook after getting the failover status of the HA pair
     #failover_check_only: True
-    failover_status_retries: 20
+    failover_status_retries: 40
     failover_status_delay: 30
     pause_in_seconds_between_takeover_giveback: 300
     takeover_option: "normal"
-    target_ontap_version: "9.11.1P1"
+    target_ontap_version: ""
     override_vetoes: "false"
     nodes: []
-    nodes:
-      cluster1: cluster1-01
-      cluster2: cluster2-01
     node: "{{ nodes[inventory_hostname] if inventory_hostname in nodes else '' }}"
     node_query:
       fields: "uptime,state,ha,version"
@@ -172,14 +169,15 @@
               and takeover_status.response.state == 'waiting_for_giveback'
       retries: "{{ failover_status_retries }}"
       delay: "{{ failover_status_delay }}"     
+
+    - name: Give it {{ pause_in_seconds_between_takeover_giveback }} seconds before we try giveback
+      ansible.builtin.pause:
+        seconds: "{{ pause_in_seconds_between_takeover_giveback }}"
+        
     when: takeover is defined or in_takeover is defined 
  
   - name: Do the giveback
     block: 
-    - name: Give it {{ pause_in_seconds_between_takeover_giveback }} seconds before we try giveback
-      ansible.builtin.pause:
-        seconds: "{{ pause_in_seconds_between_takeover_giveback }}"
-
     - name: storage failover giveback -ofnode <node> -override-vetoes {{ override_vetoes }}
       netapp.ontap.na_ontap_rest_cli: 
         command: 'storage/failover/giveback'
