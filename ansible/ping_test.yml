@@ -102,11 +102,11 @@
         var: lifs_diff_ping_test_results
     #- name: set lifs_test_results_diff
 
-    - name: Show in git diff format
-      ansible.utils.fact_diff:
-        before: "{{ lifs_baseline_ping_test_results.failed }}"
-        after: "{{ lifs_ping_test_results.failed }}"
-      register: lifs_diff_failed_ping_test_results
+    # - name: Show in git diff format
+    #   ansible.utils.fact_diff:
+    #     before: "{{ lifs_baseline_ping_test_results.failed }}"
+    #     after: "{{ lifs_ping_test_results.failed }}"
+    #   register: lifs_diff_failed_ping_test_results
 
     - name: Fail playbook
       ansible.builtin.fail: 
