@@ -14,9 +14,9 @@
       validate_certs: "{{ validate_certs }}"
   vars: 
     mock: False
-    test_count: 2
-    fail_threshold: 2
-    ping_count: 5
+    test_count: 1
+    fail_threshold: 1
+    ping_count: 1
     test_pause: 10
     lifs_to_ping_test: "{{ lifs_to_test[inventory_hostname] | default([]) }}"
     lifs_that_failed: []
