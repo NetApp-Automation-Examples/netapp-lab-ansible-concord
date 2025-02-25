@@ -211,27 +211,42 @@
           verb: "GET"
         register: verify_uptime
 
-      - name: Get current ONTAP Version (`system image show -iscurrent true -fields image,node,version`)
+      - name: Get current ONTAP Image (`system image show -iscurrent true -fields image,node,version`)
         netapp.ontap.na_ontap_rest_cli: 
           command: 'system/image'
           params: 
             iscurrent: "true"
             fields: "image,node,version"
           verb: "GET"
-        register: verify_ontap_version
+        register: verify_ontap_image
 
       - name: Set uptime_and_os
         ansible.builtin.set_fact: 
-          uptime_and_os: "{{ verify_ontap_version.msg.records 
+          uptime_and_os: "{{ verify_ontap_image.msg.records 
                             | community.general.lists_mergeby(verify_uptime.msg.records, 'node') }}"
 
-      - name: Show uptime and current ONTAP Version
+      - name: Show uptime and current ONTAP Image for each node
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
             cluster ha show: "{{ verify_ha.msg }}"
-            Current Uptime and OS: "{{ uptime_and_os | dicts_to_table }}"
-      
+            Current Uptime and Image: "{{ uptime_and_os | dicts_to_table }}"
+
+      - name: Get reported ONTAP version (`version`)
+        netapp.ontap.na_ontap_rest_cli: 
+          command: 'version'
+          params: 
+            iscurrent: "true"
+            fields: "image,node,version"
+          verb: "GET"
+        register: verify_ontap_version
+
+      - name: Show reported ONTAP Version
+        include_tasks: tasks/add_log.yml
+        vars: 
+          log: 
+            version: "{{ verify_ontap_version.msg }}"      
+            
       - name: Show summary_logs
         ansible.builtin.debug: 
           var: summary_logs
