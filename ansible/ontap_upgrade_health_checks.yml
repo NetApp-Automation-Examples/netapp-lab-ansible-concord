@@ -235,9 +235,8 @@
       - name: Get reported ONTAP version (`version`)
         netapp.ontap.na_ontap_rest_cli: 
           command: 'version'
-          params: 
-            iscurrent: "true"
-            fields: "image,node,version"
+          params:
+            fields: "node,version"
           verb: "GET"
         register: verify_ontap_version
 
@@ -245,7 +244,7 @@
         include_tasks: tasks/add_log.yml
         vars: 
           log: 
-            version: "{{ verify_ontap_version.msg }}"      
+            version: "{{ verify_ontap_version.msg.records |dicts_to_table }}"      
             
       - name: Show summary_logs
         ansible.builtin.debug: 
