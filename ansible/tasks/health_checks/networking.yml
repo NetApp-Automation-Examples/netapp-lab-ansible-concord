@@ -128,6 +128,29 @@
     log: 
       network port show -link up: "{{ verify_ports.msg.records | dicts_to_table }}"
 
+- name: Verify each port has reachability to its expected broadcast domain (`network port reachability show -detail`)
+  netapp.ontap.na_ontap_rest_cli: 
+    command: 'network/port/reachability'
+    params: 
+      fields: "node,port,expected-broadcast-domain,reachable-broadcast-domains,reachability-status,unreachable-ports,unexpected-ports"
+    verb: "GET"
+  register: verify_port_reachability
+
+- name: Log of verify_port_reachability
+  include_tasks: tasks/add_log.yml
+  vars: 
+    log: 
+      network port reachability show -detail: "{{ verify_port_reachability.msg.records | dicts_to_table }}"
+
+- name: Fail playbook if reachability_status != ok on any ports
+  include_tasks: tasks/add_failure.yml
+  vars: 
+    failure: 
+      issue: "All ports must report 'ok' for reachability status"
+      details: "{{ verify_port_reachability.msg.records | dicts_to_table }}"
+  when: verify_port_reachability.msg.records | rejectattr('reachability_status','equalto','ok') | list | length > 0 
+  
+
 - name: Find any unhealthy ports and/or ports without a broadcast domain
   ansible.builtin.set_fact: 
     verify_ports_unhealthy: "{{ verify_ports.msg.records | selectattr('broadcast_domain', 'undefined') | 

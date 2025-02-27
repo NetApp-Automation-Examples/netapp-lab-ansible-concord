@@ -8,4 +8,4 @@
   vars: 
     log: 
       netapp.ontap.na_ontap_cluster_ha: "{{ enable_ha }}"
-  when: "{{ enable_ha.changed }}"
+  when: enable_ha.changed

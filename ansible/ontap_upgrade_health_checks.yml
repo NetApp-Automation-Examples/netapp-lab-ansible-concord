@@ -245,7 +245,23 @@
         vars: 
           log: 
             version: "{{ verify_ontap_version.msg.records |dicts_to_table }}"      
-            
+
+      - name: Get system node upgrade-revert show
+        block: 
+        - netapp.ontap.na_ontap_rest_cli: 
+            command: 'system/node/upgrade-revert'
+            params:
+              fields: "status,status-msg"
+            verb: "GET"
+          register: verify_upgrade_revert_show
+
+        - name: Show output of system node upgrade-revert show
+          include_tasks: tasks/add_log.yml
+          vars: 
+            log: 
+              system node upgrade-revert show: "{{ verify_upgrade_revert_show.msg.records |dicts_to_table }}"      
+        when: post_upgrade_check|bool == true
+
       - name: Show summary_logs
         ansible.builtin.debug: 
           var: summary_logs
